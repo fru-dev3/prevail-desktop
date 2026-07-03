@@ -1292,9 +1292,11 @@ export function ChatPanel({
       // with `engine-chat:done`. We render into the SAME `messages`
       // state and reuse the existing chat bubble rendering, so this is
       // purely an alternate producer for the assistant reply.
-      const u3 = await listen<{ session: string; stream?: string; data: ChatEvent | string }>(
-        "engine-chat:line",
-        (e) => {
+      // Shared renderer for engine-produced ChatEvent streams. Bound to BOTH
+      // engine-chat (advisory reply) and engine-agent (Act mode) channels, so an
+      // Act run renders in the same bubble - including its Prevail-verified
+      // "what I actually did" footer, which arrives in the final assistant event.
+      const onEngineLine = (e: { payload: { session: string; stream?: string; data: ChatEvent | string } }) => {
           if (e.payload.session !== sessionRef.current) return;
           if (!mounted) return;
           // stderr lines arrive as raw strings - capture them on the
@@ -1376,14 +1378,14 @@ export function ChatPanel({
               break;
             default:
               // Unknown event type - tolerate per the schema's forward-
-              // compat requirement. No-op.
+              // compat requirement. No-op. (Agent 'tool' events fall here; the
+              // authoritative action summary rides in the assistant footer.)
               break;
           }
-        },
-      );
-      const u4 = await listen<{ session: string; code: number }>(
-        "engine-chat:done",
-        (e) => {
+      };
+      const u3 = await listen<{ session: string; stream?: string; data: ChatEvent | string }>("engine-chat:line", onEngineLine);
+      const u5 = await listen<{ session: string; stream?: string; data: ChatEvent | string }>("engine-agent:line", onEngineLine);
+      const onEngineDone = (e: { payload: { session: string; code: number } }) => {
           if (!mounted) return;
           onStreamEnd(e.payload.session);
           // Capture usage for engine-path turns - pull the token/cost
@@ -1405,9 +1407,10 @@ export function ChatPanel({
             }
             return m;
           });
-        },
-      );
-      unlistenRefs.current = [u1, u2, u3, u4];
+      };
+      const u4 = await listen<{ session: string; code: number }>("engine-chat:done", onEngineDone);
+      const u6 = await listen<{ session: string; code: number }>("engine-agent:done", onEngineDone);
+      unlistenRefs.current = [u1, u2, u3, u4, u5, u6];
     })();
     return () => {
       mounted = false;
@@ -1706,6 +1709,12 @@ export function ChatPanel({
     // The engine treats General as the "general" domain (general_dir), so a
     // null/empty domain maps to that here.
     const engineDomain = domain || "general";
+    // Act mode: this domain routes sends through the AGENT runtime (real,
+    // broker-gated tools + a Prevail-verified action ledger) instead of an
+    // advisory text reply. Requires the engine; off in Bunker Mode; if the
+    // engine isn't available we fall through to normal chat so a turn is never
+    // silently dropped.
+    const actMode = !!domain && !isBunkerOn() && engineAvailable && getDomainToggle(domain, "act", false);
     if (chatCli && ENGINE_ONLY.has(chatCli) && !useEngine) {
       const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "oMLX";
       setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which isn't available right now. Make sure the Prevail engine is installed, then try again.`, ts: Date.now(), cli: chatCli, model: chatModel ?? undefined }]);
@@ -1713,7 +1722,24 @@ export function ChatPanel({
       return;
     }
     try {
-      if (useEngine) {
+      if (actMode) {
+        // Act mode → the agent runtime. It streams the SAME ChatEvent NDJSON on
+        // engine-agent:* (rendered by onEngineLine/onEngineDone), so the reply
+        // and its Prevail-verified action footer land in this bubble. We pass a
+        // focused goal (the user's message plus anything they explicitly
+        // attached); the agent grounds itself in the domain and calls Prevail's
+        // vault-scoped tools (create_skill / create_loop / google_workspace).
+        const agentGoal = `${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`.trim();
+        await invoke("engine_agent_run", {
+          session: sessionRef.current,
+          vault: vaultPath,
+          domain: engineDomain,
+          goal: agentGoal,
+          cli: chatCli || null,
+          model: chatModel,
+          autonomy: "auto",
+        });
+      } else if (useEngine) {
         await invoke("engine_chat", {
           session: sessionRef.current,
           vault: vaultPath,
