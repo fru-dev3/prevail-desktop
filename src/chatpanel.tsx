@@ -945,7 +945,15 @@ export function ChatPanel({
   // Token accounting for the context meter + auto-compaction (shared so both use
   // the same numbers).
   const conversationTokens = useMemo(() => messages.reduce((a, mm) => a + estimateTokens(mm.content), 0), [messages]);
-  const attachedTokens = useMemo(() => primedContext.reduce((a, c) => a + estimateTokens(c.body), 0), [primedContext]);
+  const attachedTokens = useMemo(
+    () =>
+      primedContext.reduce((a, c) => a + estimateTokens(c.body), 0)
+      // Attached skills inline their full SKILL.md body into the prompt (capped
+      // ~4000 chars each ≈ ~1000 tokens), so count them or the meter under-reads
+      // and auto-compact can stay dormant while the real prompt is large.
+      + attachedSkills.length * 1000,
+    [primedContext, attachedSkills],
+  );
   const ctxWindowTokens = useMemo(
     () => contextWindowFor(selectedCli, selectedCli ? (modelByCli[selectedCli] ?? null) : null),
     [selectedCli, modelByCli],
