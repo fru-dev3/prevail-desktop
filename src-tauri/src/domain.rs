@@ -600,7 +600,10 @@ pub(crate) fn skill_create(
     if body.trim().is_empty() {
         return Err("skill body is empty".into());
     }
-    let dir = domain_dir(&vault, &domain).join("_skills").join(&slug);
+    // v4: write into memory/skills/ on a migrated domain, else _skills/.
+    let ddir = domain_dir(&vault, &domain);
+    let skills_root = crate::paths::v4_content_path(&ddir, "memory/skills", "_skills");
+    let dir = skills_root.join(&slug);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir skill: {e}"))?;
     let file = dir.join("SKILL.md");
     let content = format!(
