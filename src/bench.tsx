@@ -630,11 +630,37 @@ export async function executeBenchBatch(
   };
 
   try {
-    // ALL jobs run in parallel - each is its own engine process, and
-    // waiting serially on a 24-question run per model is far worse than
-    // the occasional provider rate-limit (which surfaces as a per-job
-    // error you can rerun).
-    await Promise.all(plannedJobs.map(runOne));
+    // Bounded concurrency so a big multi-model run can't exhaust memory and trip
+    // the memory watchdog (which would SIGKILL the largest model mid-run). Each
+    // job is its own engine + model process; local models (Ollama / LM Studio /
+    // MLX) are the memory hogs - a single one can be several GB - so we run at
+    // most ONE local model at a time, and cap the overall pool too. Cloud models
+    // (thin API-backed CLIs) are cheap, so the pool still keeps the run fast.
+    // Running all N at once (the old behavior) is what pushed a 16 GB Mac past
+    // the ~65%-RAM kill line with 13 models.
+    const MAX_CONCURRENT = 4;
+    let localBusy = false;
+    const pending = [...plannedJobs];
+    const worker = async (): Promise<void> => {
+      while (!batch.cancelled) {
+        // Pick the next job we're allowed to start: any cloud job, or a local
+        // job only when no local model is currently running.
+        const idx = pending.findIndex((j) => !isLocalCli(j.cli) || !localBusy);
+        if (idx === -1) {
+          if (pending.length === 0) return; // nothing left this worker can take
+          await new Promise((r) => setTimeout(r, 250)); // only local jobs left + one busy
+          continue;
+        }
+        const job = pending.splice(idx, 1)[0]!;
+        const local = isLocalCli(job.cli);
+        if (local) localBusy = true;
+        try { await runOne(job); }
+        finally { if (local) localBusy = false; }
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(MAX_CONCURRENT, plannedJobs.length) }, worker),
+    );
     if (!batch.cancelled) {
       // Score ONLY this batch's runs (fast) - not every historical run, which
       // would re-score dozens of old runs and stall the fresh scores from landing.
