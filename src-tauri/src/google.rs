@@ -138,11 +138,37 @@ fn profile_label(dir: &Path) -> String {
 }
 
 // A config dir counts as a profile once gws has written its token cache there.
+// NOTE: gws's DEFAULT credential backend is the OS keyring, in which case NONE
+// of these files exist on disk even though the account is fully authenticated.
+// So this file check alone misses keyring-authenticated accounts - callers that
+// want to detect those must also probe `gws auth status` (see
+// candidate_profile_dirs + google_profiles).
 fn is_gws_profile_dir(dir: &Path) -> bool {
     dir.is_dir()
         && (dir.join("token_cache.json").exists()
             || dir.join("credentials.enc").exists()
             || dir.join("client_secret.json").exists())
+}
+
+// Every ~/.config/gws and ~/.config/gws-* directory that EXISTS, regardless of
+// whether it has on-disk credential files. Used to detect keyring-backed
+// (fileless) authenticated profiles: existence gets it into the candidate list,
+// and `gws auth status` then decides if it's actually authenticated.
+fn candidate_profile_dirs() -> Vec<PathBuf> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let base = PathBuf::from(&home).join(".config");
+    let mut out: Vec<PathBuf> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&base) {
+        for e in rd.flatten() {
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().to_string();
+            if (name == "gws" || name.starts_with("gws-")) && p.is_dir() {
+                out.push(p);
+            }
+        }
+    }
+    out.sort();
+    out
 }
 
 fn list_profile_dirs() -> Vec<PathBuf> {
@@ -328,14 +354,21 @@ fn probe_profile(bin: &str, dir: &Path) -> (String, Option<String>) {
 pub fn google_profiles() -> Result<Vec<serde_json::Value>, String> {
     let Some(bin) = resolve_gws_bin() else { return Ok(vec![]) };
     let mut out = Vec::new();
-    for dir in list_profile_dirs() {
+    // Probe every candidate dir (existence-based, so keyring-authenticated
+    // profiles with no on-disk cred files are included). Show a row when the
+    // account is actually authenticated (probe found an email) OR the dir is
+    // file-backed - so we surface keyring accounts without listing never-used
+    // empty gws dirs as phantom profiles.
+    for dir in candidate_profile_dirs() {
         let (status, email) = probe_profile(&bin, &dir);
-        out.push(serde_json::json!({
-            "configDir": dir.to_string_lossy(),
-            "label": profile_label(&dir),
-            "email": email,
-            "status": status,
-        }));
+        if email.is_some() || is_gws_profile_dir(&dir) {
+            out.push(serde_json::json!({
+                "configDir": dir.to_string_lossy(),
+                "label": profile_label(&dir),
+                "email": email,
+                "status": status,
+            }));
+        }
     }
     Ok(out)
 }
@@ -428,7 +461,11 @@ pub fn google_scaffold(vault: String) -> Result<serde_json::Value, String> {
             "google_workspace": true,
             "covers": GOOGLE_SERVICES,
             "domains": [],
-            "refresh": { "every": "daily" }
+            "refresh": { "every": "daily" },
+            // Lets the engine's connector probe verify the connection by running
+            // the already-authenticated gws CLI (exit 0 = authenticated), instead
+            // of reporting "not-configured".
+            "auth_check": { "kind": "command", "command": "gws", "args": ["auth", "status"], "success_exit_codes": [0] }
         });
         std::fs::write(&manifest, format!("{}\n", serde_json::to_string_pretty(&m).unwrap_or_default()))
             .map_err(|e| format!("write manifest: {e}"))?;
