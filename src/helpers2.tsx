@@ -43,7 +43,19 @@ export async function buildSkillsPreamble(
     );
   }
   if (!blocks.length) return "";
-  return `--- Skills to apply ---\nThe user attached these skills. Follow their instructions where they apply to the request.\n\n${blocks.join("\n\n")}\n--- End skills ---\n\n`;
+  // Anti-fabrication guard: an attached app/skill is REFERENCE, not a live
+  // connection. In a plain chat turn the model often can't actually call the
+  // app's tools, yet it will happily narrate "I connected AllTrails and pulled
+  // routes." That is a lie. Forbid claiming tool use that did not happen, on
+  // every runtime, so the model answers from context and says so instead.
+  const honesty =
+    "IMPORTANT - honesty about tools: the skills above are REFERENCE INSTRUCTIONS, not a live connection. " +
+    "In this chat you may not be able to actually call these apps' tools. Do NOT claim you connected to, " +
+    "opened, fetched from, searched, or pulled live data from any app unless a tool call actually ran and " +
+    "returned a result in this turn. If you lack live access, answer from the context and profile you were " +
+    "given, and say plainly when something is an example or general knowledge rather than a live lookup. " +
+    "Never invent specific results (addresses, IDs, counts, prices) as if you fetched them.";
+  return `--- Skills to apply ---\nThe user attached these skills. Follow their instructions where they apply to the request.\n\n${blocks.join("\n\n")}\n\n${honesty}\n--- End skills ---\n\n`;
 }
 
 // Best-effort live model discovery for the given providers; fills
