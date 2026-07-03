@@ -114,9 +114,19 @@ export function RetrospectPanel({ vaultPath }: { vaultPath: string }) {
           ) : (
             <>
               <div className="font-display text-2xl font-semibold text-text-primary" style={{ textWrap: "balance" } as React.CSSProperties}>
-                {top ? (<>In {sel.label}, most of your attention went to <span className="text-accent">{titleCase(top.domain)}</span>.</>) : (<>In {sel.label}.</>)}
+                {top ? (<>In {sel.label}, you were mostly in <span className="text-accent">{titleCase(top.domain)}</span>.</>) : (<>In {sel.label}.</>)}
               </div>
-              <div className="mt-1 font-mono text-[11px] text-text-muted">{sel.total} prompt{sel.total === 1 ? "" : "s"} · {domains.length} domain{domains.length === 1 ? "" : "s"} touched</div>
+              {/* The biggest thread as a plain-language "what you were working on"
+                  theme — data-driven from the ledger, no model needed. */}
+              {sel.threads[0]?.message && (
+                <div className="mt-1.5 text-[14px] leading-snug text-text-secondary">
+                  Mostly: <span className="text-text-primary">{sel.threads[0].message}</span>
+                  {sel.threads[1]?.message && (top && sel.threads[1].domain !== top.domain) ? (
+                    <span className="text-text-muted"> · also {titleCase(sel.threads[1].domain)}: {sel.threads[1].message}</span>
+                  ) : null}
+                </div>
+              )}
+              <div className="mt-1.5 font-mono text-[11px] text-text-muted">{sel.total} prompt{sel.total === 1 ? "" : "s"} · {domains.length} domain{domains.length === 1 ? "" : "s"} touched</div>
 
               {/* Attention bars */}
               <div className="mt-6">

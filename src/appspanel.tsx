@@ -2881,6 +2881,23 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
 }) {
   const meta = STATUS_META[status];
   const enabled = app.enabled !== false;
+  // Pass-through awareness: if this app is ALREADY authorized in one of the
+  // user's runtimes (Claude Code / Codex / Gemini), say so — the "you already
+  // have it, don't reconnect" step of the Connections model.
+  const [passThrough, setPassThrough] = useState<{ runtime: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void invoke<Array<{ runtime: string; name: string; connected: boolean }>>("discover_runtime_connectors", { runtime: "all" })
+      .then((rows) => {
+        if (!alive) return;
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const want = new Set([norm(app.id), norm(app.title || "")].filter(Boolean));
+        const hit = (rows || []).find((r) => r.connected && want.has(norm(r.name)));
+        setPassThrough(hit ? { runtime: hit.runtime } : null);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [app.id, app.title]);
   // Star = pin to the home sidebar. The one control, shared by every mode, that
   // decides what shows on the home screen (Direct, Composio, and Nango apps all
   // reach this same detail header). Keyed by the app's unique id (not its name)
@@ -3265,6 +3282,12 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
               Visit {app.title || app.id} <ExternalLink className="h-3 w-3" />
             </button>
           </div>
+          {passThrough && (
+            <div className="mt-2.5 flex items-center gap-2 rounded-lg border border-accent-border bg-accent-soft/40 px-3 py-2 text-[12.5px]">
+              <Check className="h-3.5 w-3.5 shrink-0 text-accent" />
+              <span className="text-text-secondary"><span className="font-semibold text-text-primary">Already connected via {passThrough.runtime === "claude" ? "Claude Code" : passThrough.runtime.charAt(0).toUpperCase() + passThrough.runtime.slice(1)}.</span> Prevail can use it here — no separate setup needed.</span>
+            </div>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <button onClick={() => toggleFavorite(favKey)} title={isFav ? "On your home screen, click to remove" : "Add to your home screen"} aria-pressed={isFav}
