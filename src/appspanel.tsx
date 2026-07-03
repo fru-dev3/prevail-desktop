@@ -110,9 +110,18 @@ export function credFieldsFor(app: EngineApp): CredField[] | undefined {
 // effectively the only true aggregator in the catalog, a dedicated tab just
 // added a confusing, near-empty filter, so the lane was dropped. Plaid-backed
 // banks now classify as "direct" like any other directly-fetched app.
-export type AppLane = "cli" | "direct" | "mcp";
-function laneOf(a: { pattern?: string; via?: string; integration?: string; gateway?: unknown | null; connection_hint?: { method?: string } }): AppLane {
-  // MCP first: a catalog entry declares it via connection_hint.method, an
+export type AppLane = "cli" | "direct" | "mcp" | "integrator";
+// App integrators/aggregators (Composio, Nango, Zapier) front MANY apps through
+// one connection - conceptually distinct from a direct app connection or a plain
+// MCP server, so they get their own lane.
+function isIntegratorApp(a: { name?: string | null; iconSlug?: string | null }): boolean {
+  const s = `${a.name ?? ""} ${a.iconSlug ?? ""}`.toLowerCase();
+  return /\b(composio|nango|zapier)\b/.test(s);
+}
+function laneOf(a: { name?: string | null; iconSlug?: string | null; pattern?: string; via?: string; integration?: string; gateway?: unknown | null; connection_hint?: { method?: string } }): AppLane {
+  // Integrators first - they'd otherwise fall under MCP/Direct.
+  if (isIntegratorApp(a)) return "integrator";
+  // MCP next: a catalog entry declares it via connection_hint.method, an
   // installed app via its integration id ("mcp"). Check before cli/direct so an
   // MCP server is never miscategorized as a generic Direct app.
   if (a.connection_hint?.method === "mcp" || (a.integration || "").toLowerCase().includes("mcp")) return "mcp";
@@ -125,6 +134,7 @@ export const LANE_FILTERS: { key: "all" | AppLane; label: string }[] = [
   { key: "cli", label: "CLI" },
   { key: "direct", label: "Direct" },
   { key: "mcp", label: "MCP" },
+  { key: "integrator", label: "Integrators" },
 ];
 
 // Google's many surfaces (Gmail, Calendar, Drive, YouTube, …) are all covered by
@@ -645,7 +655,10 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       const keySlug = norm(c.iconSlug || "");
       if (!keyName) return false;
       if (installedKeys.has(keyName) || (keySlug && installedKeys.has(keySlug))) return false;
-      if (lane !== "all" && laneOf(c) !== lane) return false;
+      // Search is GLOBAL: when the user is typing a query, ignore the active
+      // tab so an app in another lane (e.g. Composio under MCP) still shows.
+      // The lane filter only narrows the default browse view.
+      if (!q && lane !== "all" && laneOf(c) !== lane) return false;
       if (isGoogleSubservice(c)) return false; // collapsed into the unified "Google"
       // #39: a pinned catalog app already shows in "My list" above; don't repeat it.
       if (isPinnedApp({ name: c.name })) return false;
