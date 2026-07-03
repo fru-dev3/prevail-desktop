@@ -451,14 +451,17 @@ export function DomainContextDrawer({
               ) : <div className="text-[11px] text-text-muted">Empty. Run a council or save a decision.</div>}
               </>
             } />
-            {/* Journal = the raw record: what you asked + session logs. The
-                distilled sections above are derived from this. (Named "Journal"
-                consistently per founder; was "Activity".) */}
-            <Section keyName="activity" title="Journal" file="_intents.jsonl" count={ctx.recent_logs.length || undefined} body={
+            {/* The raw record of EVERY prompt that came into this domain: what you
+                asked + session logs. The distilled sections above are derived from
+                this. Labeled to MATCH its on-disk file exactly (_intents.jsonl) so
+                the UI name never diverges from the filesystem (founder rule: no
+                name/file discrepancy). This file is the complete prompt log, not a
+                distilled subset. */}
+            <Section keyName="activity" title="Intents" file="_intents.jsonl" count={ctx.recent_logs.length || undefined} body={
               <>
               {ctx.journal && (
                 <div className="mb-2">
-                  <CtxRow desc="Your raw activity; the rest is distilled from this." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} journal`, ctx.journal!)} onUse={() => onInjectContext(ctx.journal!, `${domain ? titleCase(domain) : "General"} · journal`)} />
+                  <CtxRow desc="Every prompt you sent, verbatim; the distilled sections are derived from this." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} intents`, ctx.journal!)} onUse={() => onInjectContext(ctx.journal!, `${domain ? titleCase(domain) : "General"} · intents`)} />
                 </div>
               )}
               {ctx.recent_logs.length > 0 ? (
