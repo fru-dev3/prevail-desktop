@@ -133,7 +133,7 @@ pub(crate) fn write_domain_ideal(vault: String, domain: Option<String>, body: St
 // by the distill daemon. Prepended to prompts like user.md. Empty if none yet.
 #[tauri::command]
 pub(crate) async fn read_memory_md(vault: String, domain: Option<String>) -> Result<String, String> {
-    let p = domain_dir(&vault, &domain).join("_memory.md");
+    let p = crate::paths::v4_content_path(&domain_dir(&vault, &domain), "memory/memory.md", "_memory.md");
     if !p.exists() {
         return Ok(String::new());
     }
@@ -152,7 +152,7 @@ pub(crate) fn append_memory_md(vault: String, domain: Option<String>, note: Stri
     }
     let dir = domain_dir(&vault, &domain);
     std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir domain: {e}"))?;
-    let p = dir.join("_memory.md");
+    let p = crate::paths::v4_content_path(&dir, "memory/memory.md", "_memory.md");
     let existing = if p.exists() { read_to_string_retry(&p).unwrap_or_default() } else { String::new() };
     const HEADER: &str = "## Pinned by you";
     let date = crate::tasks::today_ymd();
