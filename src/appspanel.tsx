@@ -2884,7 +2884,10 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
   // Pass-through awareness: if this app is ALREADY authorized in one of the
   // user's runtimes (Claude Code / Codex / Gemini), say so — the "you already
   // have it, don't reconnect" step of the Connections model.
-  const [passThrough, setPassThrough] = useState<{ runtime: string } | null>(null);
+  // EVERY runtime that has this app as a connector (Claude Code / Codex / Gemini),
+  // with its current auth state — so the Connections page can offer pass-through
+  // through each, regardless of transient "needs authentication" status.
+  const [passThroughs, setPassThroughs] = useState<Array<{ runtime: string; connected: boolean }>>([]);
   useEffect(() => {
     let alive = true;
     void invoke<Array<{ runtime: string; name: string; connected: boolean }>>("discover_runtime_connectors", { runtime: "all" })
@@ -2892,12 +2895,19 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
         if (!alive) return;
         const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
         const want = new Set([norm(app.id), norm(app.title || "")].filter(Boolean));
-        const hit = (rows || []).find((r) => r.connected && want.has(norm(r.name)));
-        setPassThrough(hit ? { runtime: hit.runtime } : null);
+        const matches = (rows || []).filter((r) => want.has(norm(r.name)));
+        // Dedupe by runtime, preferring a connected entry.
+        const byRt = new Map<string, { runtime: string; connected: boolean }>();
+        for (const r of matches) {
+          const prev = byRt.get(r.runtime);
+          if (!prev || (r.connected && !prev.connected)) byRt.set(r.runtime, { runtime: r.runtime, connected: r.connected });
+        }
+        setPassThroughs([...byRt.values()]);
       })
       .catch(() => {});
     return () => { alive = false; };
   }, [app.id, app.title]);
+  const passThrough = passThroughs[0] ?? null; // for the header banner
   // Star = pin to the home sidebar. The one control, shared by every mode, that
   // decides what shows on the home screen (Direct, Composio, and Nango apps all
   // reach this same detail header). Keyed by the app's unique id (not its name)
@@ -3586,16 +3596,40 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
             <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-text-primary"><Link2 className="h-4 w-4 text-accent" /> How Prevail reaches {app.title || app.id}</div>
             <p className="mb-3 text-[12px] text-text-muted">Ranked by least work for you. Pick one — the others stay available.</p>
             <div className="flex flex-col gap-2">
-              {passThrough && (
-                <div className="flex items-center gap-3 rounded-xl border border-accent-border bg-accent-soft/30 px-3.5 py-2.5">
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-ok" />
+              {/* One row per RUNTIME that already has this app as a connector
+                  (Claude Code / Codex / Gemini) — pass-through, with a re-auth
+                  link and a Make-default toggle. Shows even when auth is transient. */}
+              {passThroughs.map((pt) => {
+                const rt = pt.runtime === "claude" ? "Claude Code" : pt.runtime.charAt(0).toUpperCase() + pt.runtime.slice(1);
+                const isDefault = methodOf(app) === "mcp";
+                const authUrl = pt.runtime === "claude" ? "https://claude.ai/mcp" : pt.runtime === "gemini" ? "https://ai.google.dev" : "https://platform.openai.com";
+                return (
+                <div key={pt.runtime} className="flex items-center gap-3 rounded-xl border border-accent-border bg-accent-soft/30 px-3.5 py-2.5">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${pt.connected ? "bg-ok" : "bg-warn"}`} />
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-semibold text-text-primary">{passThrough.runtime === "claude" ? "Claude Code" : passThrough.runtime.charAt(0).toUpperCase() + passThrough.runtime.slice(1)} · MCP</div>
-                    <div className="font-mono text-[10.5px] text-text-muted">already authorized · zero setup · Prevail uses it in Act runs</div>
+                    <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">{rt} · MCP {isDefault && <span className="rounded border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-accent">default</span>}</div>
+                    <div className="font-mono text-[10.5px] text-text-muted">{pt.connected ? "already authorized · zero setup" : "set up here, but needs re-authorization"} · Prevail passes it through</div>
                   </div>
-                  <span className="shrink-0 rounded-md border border-accent-border bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background">In use</span>
+                  {!pt.connected && <button onClick={() => void openUrl(authUrl)} className="shrink-0 rounded-md border border-warn/50 px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-warn hover:bg-warn/10">Re-authorize</button>}
+                  <button
+                    onClick={() => setDefaultMethod("mcp")}
+                    title={`Use ${app.title || app.id} through your ${rt} connection`}
+                    className="shrink-0 rounded-md border border-accent-border bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90"
+                  >{isDefault ? "In use" : "Use this"}</button>
                 </div>
-              )}
+                ); })}
+              {/* Gateway options: Composio / Nango front thousands of apps. Offer
+                  them so you can connect this app through a gateway you already use. */}
+              {["composio", "nango"].map((gw) => (
+                <div key={gw} className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3.5 py-2.5">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-text-muted" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-semibold text-text-primary">{gw.charAt(0).toUpperCase() + gw.slice(1)}</div>
+                    <div className="font-mono text-[10.5px] text-text-muted">connect {app.title || app.id} through your {gw} gateway (one OAuth for many apps)</div>
+                  </div>
+                  <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: gw === "composio" ? "connectors" : "connectors" }))} className="shrink-0 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">Connect</button>
+                </div>
+              ))}
               {(() => { const m = methodOf(app); return m === "mcp" || m === "cli" ? (
                 <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3.5 py-2.5">
                   <span className={`h-2 w-2 shrink-0 rounded-full ${notConnected ? "bg-text-muted" : "bg-ok"}`} />
