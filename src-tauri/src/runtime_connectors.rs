@@ -99,42 +99,84 @@ fn parse_line(line: &str) -> Option<RuntimeConnector> {
     })
 }
 
-/// Discover the MCP connectors already authorized in the given runtime (only
-/// "claude" is wired for now). Runs `claude mcp list` and returns one row per
-/// server. Never errors on "claude not installed" — returns an empty list so the
-/// UI just shows nothing rather than a scary error. A real spawn failure (claude
-/// present but unrunnable) surfaces as Err so the UI can say so.
-#[tauri::command]
-pub fn discover_runtime_connectors(runtime: Option<String>) -> Result<Vec<serde_json::Value>, String> {
-    let rt = runtime.unwrap_or_else(|| "claude".into());
-    if rt != "claude" {
-        // Gemini / Codex discovery is Phase 3.
-        return Ok(vec![]);
-    }
-    let Some(bin) = resolve_bin("claude") else {
-        return Ok(vec![]); // claude not installed — nothing to pass through
-    };
+// Claude Code: `claude mcp list` (account + local servers, with live health).
+fn discover_claude() -> Vec<RuntimeConnector> {
+    let Some(bin) = resolve_bin("claude") else { return vec![] };
     let (path, user, logname) = crate::chat::build_cli_env();
-    let out = Command::new(&bin)
+    let out = match Command::new(&bin)
         .args(["mcp", "list"])
         .env("PATH", &path)
         .env("USER", &user)
         .env("LOGNAME", &logname)
         .stdin(std::process::Stdio::null())
         .output()
-        .map_err(|e| format!("could not run `claude mcp list`: {e}"))?;
+    {
+        Ok(o) => o,
+        Err(_) => return vec![],
+    };
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let rows: Vec<serde_json::Value> = text
-        .lines()
-        .filter_map(parse_line)
+    text.lines().filter_map(parse_line).collect()
+}
+
+// Codex: `~/.codex/config.toml` has `[mcp_servers.<name>]` sections (plus
+// `.tools.*` / `.env` subsections we skip). No live health, so status is
+// "configured". Parsed without a TOML crate — we only need the server names.
+fn discover_codex() -> Vec<RuntimeConnector> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let p = Path::new(&home).join(".codex").join("config.toml");
+    let text = match std::fs::read_to_string(&p) { Ok(t) => t, Err(_) => return vec![] };
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for line in text.lines() {
+        let l = line.trim();
+        if let Some(rest) = l.strip_prefix("[mcp_servers.") {
+            if let Some(name) = rest.strip_suffix(']') {
+                if name.contains('.') { continue; } // a .tools.* / .env subsection
+                let name = name.trim().trim_matches('"').to_string();
+                if name.is_empty() || !seen.insert(name.clone()) { continue; }
+                out.push(RuntimeConnector { runtime: "codex".into(), id: slug(&name), name, endpoint: String::new(), status: "configured".into(), connected: true, source: "local".into() });
+            }
+        }
+    }
+    out
+}
+
+// Gemini CLI: `~/.gemini/settings.json` -> `mcpServers` object keys.
+fn discover_gemini() -> Vec<RuntimeConnector> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let p = Path::new(&home).join(".gemini").join("settings.json");
+    let text = match std::fs::read_to_string(&p) { Ok(t) => t, Err(_) => return vec![] };
+    let v: serde_json::Value = match serde_json::from_str(&text) { Ok(v) => v, Err(_) => return vec![] };
+    let mut out = Vec::new();
+    if let Some(obj) = v.get("mcpServers").and_then(|m| m.as_object()) {
+        for name in obj.keys() {
+            out.push(RuntimeConnector { runtime: "gemini".into(), id: slug(name), name: name.clone(), endpoint: String::new(), status: "configured".into(), connected: true, source: "local".into() });
+        }
+    }
+    out
+}
+
+/// Discover the MCP connectors already authorized across the user's AI runtimes.
+/// `runtime` is claude|codex|gemini|all (default all). Reads each runtime's own
+/// config (claude: `claude mcp list`; codex: config.toml; gemini: settings.json)
+/// and returns one row per server. Never errors on a missing runtime — an absent
+/// tool just contributes nothing, so the UI shows what you actually have.
+#[tauri::command]
+pub fn discover_runtime_connectors(runtime: Option<String>) -> Result<Vec<serde_json::Value>, String> {
+    let rt = runtime.unwrap_or_else(|| "all".into());
+    let mut rows: Vec<RuntimeConnector> = Vec::new();
+    if rt == "all" || rt == "claude" { rows.extend(discover_claude()); }
+    if rt == "all" || rt == "codex" { rows.extend(discover_codex()); }
+    if rt == "all" || rt == "gemini" { rows.extend(discover_gemini()); }
+    Ok(rows
+        .into_iter()
         .map(|r| serde_json::to_value(r).unwrap_or(serde_json::Value::Null))
         .filter(|v| !v.is_null())
-        .collect();
-    Ok(rows)
+        .collect())
 }
 
 #[cfg(test)]

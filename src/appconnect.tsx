@@ -91,7 +91,7 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel, presetName, preset
   interface RuntimeConn { runtime: string; id: string; name: string; endpoint: string; status: string; connected: boolean; source: string }
   const [runtimeConns, setRuntimeConns] = useState<RuntimeConn[]>([]);
   useEffect(() => {
-    void invoke<RuntimeConn[]>("discover_runtime_connectors", { runtime: "claude" })
+    void invoke<RuntimeConn[]>("discover_runtime_connectors", { runtime: "all" })
       .then((r) => setRuntimeConns(Array.isArray(r) ? r : []))
       .catch(() => {});
   }, []);
@@ -235,17 +235,17 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel, presetName, preset
       {claudeConnected.length > 0 && (
         <div className="mb-3 rounded-lg border border-border-subtle bg-background/40 p-3">
           <div className="mb-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-            <Sparkles className="h-3 w-3 text-accent" /> Already connected in Claude Code
+            <Sparkles className="h-3 w-3 text-accent" /> Already connected in your AI tools
           </div>
           <div className="mb-2 text-[11px] leading-snug text-text-muted">
-            You authorized these in Claude Code, so Prevail can see them. No need to reconnect them here.
+            You authorized these in Claude Code, Codex, or Gemini, so Prevail can see them. No need to reconnect them here.
           </div>
           <div className="flex max-h-56 flex-col gap-1 overflow-y-auto">
             {claudeConnected.map((c) => (
-              <div key={`${c.source}-${c.id}`} className="flex items-center gap-2.5 rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5">
+              <div key={`${c.runtime}-${c.source}-${c.id}`} className="flex items-center gap-2.5 rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5">
                 <AppRowLogo app={{ title: c.name, id: c.id }} logos={logos} size={22} fallback="letter" />
                 <span className="min-w-0 flex-1 truncate text-[13px] text-text-primary">{c.name}</span>
-                <span className="shrink-0 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent">via Claude Code</span>
+                <span className="shrink-0 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent">via {c.runtime === "claude" ? "Claude Code" : c.runtime.charAt(0).toUpperCase() + c.runtime.slice(1)}</span>
               </div>
             ))}
           </div>
