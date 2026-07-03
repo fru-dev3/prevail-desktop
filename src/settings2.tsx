@@ -1033,7 +1033,7 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
           <div className="rounded-lg border border-dashed border-border bg-background p-10 text-center">
             <Sparkles className="mx-auto h-8 w-8 text-text-muted opacity-50" />
             <p className="mt-3 text-sm text-text-muted">
-              No skills found. Try creating <code className="text-accent">{"<domain>/skills/<skill-name>/"}</code> with a SKILL.md.
+              No skills found. Try creating <code className="text-accent">{"<domain>/_skills/<skill-name>/"}</code> with a SKILL.md.
             </p>
           </div>
         )}

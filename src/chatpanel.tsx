@@ -14,7 +14,7 @@ import { relTime, scoreColor, titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
 import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
 import { domainBlurb, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
-import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, curatedFor, loadPreferredSkills, maybeRedact, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
+import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, buildSkillsPreamble, curatedFor, loadPreferredSkills, maybeRedact, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
 import { ContextScoreBadge, NewSkillForm, ScoreBar, SkillsList } from "./panels";
@@ -1593,9 +1593,9 @@ export function ChatPanel({
     const memoryPreamble = (!incognito && getPref(PREF.persistentMemory, "1") === "1" && memoryMd.trim())
       ? `--- Long-term memory (${domain ?? "General"}) ---\n${memoryMd.trim().slice(0, Number(getPref(PREF.memoryBudgetChars, "4000")))}\n\n`
       : "";
-    const skillsPreamble = attachedSkills.length > 0
-      ? `Use the following skills as part of your reply: ${attachedSkills.map((n) => `/${n}`).join(", ")}\n\n`
-      : "";
+    // Load the attached skills' actual SKILL.md bodies so the model gets their
+    // instructions, not just a reference to a name it can't see.
+    const skillsPreamble = await buildSkillsPreamble(attachedSkills, allSkills, domain ?? null);
     // Build multi-turn context from prior messages. We pass it as a
     // single text payload because the CLIs spawn fresh each turn and
     // have no shared session. Cap at ~40K characters (~10K tokens) and

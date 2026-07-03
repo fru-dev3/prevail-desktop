@@ -7,7 +7,7 @@ import { invoke, listen } from "./bridge";
 import { titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
 import { isLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
-import { buildCouncilQuickActions, buildIdealStatePreamble, buildSynthesisPrompt, curatedFor, loadPreferredSkills, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
+import { buildCouncilQuickActions, buildIdealStatePreamble, buildSkillsPreamble, buildSynthesisPrompt, curatedFor, loadPreferredSkills, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { ThinkingDisclosure } from "./ui";
 import { ContextMeter, estimateTokens, contextWindowFor } from "./contextmeter";
@@ -855,7 +855,7 @@ export function CouncilPanel({
       ? primedContext.map((c) => `--- ${c.label} ---\n${c.body.trim()}\n`).join("\n") + "\n"
       : "";
     const skillsPreamble = attachedSkills.length > 0
-      ? `Use the following skills as part of your reply: ${attachedSkills.map((n) => `/${n}`).join(", ")}\n\n`
+      ? await buildSkillsPreamble(attachedSkills, allSkills, domain ?? null)
       : "";
     // Continuation: feed prior council turns (questions + chair verdicts)
     // so this convene builds on the conversation so far.
