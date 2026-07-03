@@ -1091,6 +1091,7 @@ export function BenchRunConfig({
   mode, setMode, selModels, toggleModel, allDomains, scope, toggleScope, scoped,
   applyModels, applyScope, onRunSuite,
   questionCounts, questionCount, onRun,
+  presetsView = false, onOpenPresets,
 }: {
   mode: "single" | "council";
   setMode: (m: "single" | "council") => void;
@@ -1111,6 +1112,11 @@ export function BenchRunConfig({
   questionCounts: Record<string, number>;
   questionCount: number;
   onRun: () => void;
+  // Presets now live on their OWN Arena nav item, not a side-tab of this wizard.
+  // presetsView renders JUST the presets panel (no stepper); onOpenPresets lets
+  // in-wizard shortcuts jump to that nav view.
+  presetsView?: boolean;
+  onOpenPresets?: () => void;
 }) {
   // Council is retired from this page: the run is always the multi-model
   // head-to-head, so the selection count is simply the chosen models. The
@@ -1355,7 +1361,8 @@ export function BenchRunConfig({
   const [activeStep, setActiveStep] = useState<StepId>("models");
   // Keep a live step even if scoped drops the Domains tab out from under us.
   const activeIsValid = activeStep === "presets" || flowSteps.some((s) => s.id === activeStep);
-  const effectiveStep: StepId = activeIsValid ? activeStep : "models";
+  // In the dedicated Presets nav view, always show the presets panel.
+  const effectiveStep: StepId = presetsView ? "presets" : (activeIsValid ? activeStep : "models");
   const flowIndex = flowSteps.findIndex((s) => s.id === effectiveStep);
   const nextStep = flowIndex >= 0 && flowIndex < flowSteps.length - 1 ? flowSteps[flowIndex + 1] : null;
   // Progress bar: fraction of the linear flow steps that are "done".
@@ -1374,7 +1381,9 @@ export function BenchRunConfig({
   return (
     <div className="w-full px-8 pb-6">
       {/* STEPPER: clickable tabs left-to-right with a progress bar. Steps read as
-          "done" once valid; the active step's detail renders below. */}
+          "done" once valid; the active step's detail renders below. Hidden in the
+          dedicated Presets view, which shows only the presets panel. */}
+      {!presetsView && (
       <div className="mb-6 rounded-2xl border border-border bg-surface px-4 py-3.5">
         <div className="flex items-center gap-1.5">
           {flowSteps.map((s, i) => {
@@ -1409,16 +1418,13 @@ export function BenchRunConfig({
               </div>
             );
           })}
-          {/* Presets: a side tab, always reachable, for setting up / applying presets. */}
+          {/* Presets moved to its own Arena nav item; a compact shortcut stays
+              here so it's still one click from the wizard. */}
           <div className="ml-1 flex shrink-0 items-center gap-1.5 border-l border-border-subtle pl-2">
             <button
-              onClick={() => setActiveStep("presets")}
-              title="Set up and apply reusable model presets"
-              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[13px] font-semibold transition-colors ${
-                effectiveStep === "presets"
-                  ? "border-accent bg-accent-soft text-accent"
-                  : "border-border-subtle bg-surface text-text-secondary hover:border-accent-border hover:text-accent"
-              }`}
+              onClick={() => onOpenPresets?.()}
+              title="Open Presets: reusable model bundles"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-border-subtle bg-surface px-3 py-2 text-[13px] font-semibold text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
             >
               <Bookmark className="h-3.5 w-3.5" /> Presets
             </button>
@@ -1435,6 +1441,7 @@ export function BenchRunConfig({
           </div>
         </div>
       </div>
+      )}
 
       {/* ── STEP DETAIL renders below the stepper ── */}
 
@@ -1446,7 +1453,7 @@ export function BenchRunConfig({
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border-subtle bg-surface-warm/50 px-4 py-2.5">
             <Bookmark className="h-3.5 w-3.5 shrink-0 text-accent" />
             <span className="text-[12px] text-text-secondary">Select models directly below, or apply a preset to fill the selection.</span>
-            <button onClick={() => setActiveStep("presets")} className="ml-auto inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[11px] text-accent hover:bg-accent-soft/70">
+            <button onClick={() => onOpenPresets?.()} className="ml-auto inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[11px] text-accent hover:bg-accent-soft/70">
               Browse presets <ChevronRight className="h-3 w-3" />
             </button>
           </div>
@@ -3209,7 +3216,7 @@ export function BenchmarkPanel({
   // ONE flat navigation level: every destination is a top-level tab. No
   // "Results" grouping with a second pill bar underneath - that double
   // hierarchy was genuinely confusing.
-  const [view, setView] = useState<"run" | "board" | "history" | "matrix" | "frontier" | "questions" | "scout" | "schedule">(
+  const [view, setView] = useState<"run" | "presets" | "board" | "history" | "matrix" | "frontier" | "questions" | "scout" | "schedule">(
     initialModel ? "board" : initialDomain ? "run" : "board",
   );
   // Live schedule list (for the footer's scheduled-runs indicator).
@@ -3517,6 +3524,7 @@ export function BenchmarkPanel({
   // section below it (the domain filter for Leaderboard + History).
   const NAV: Array<{ id: typeof view; label: string; icon: LucideIcon }> = [
     { id: "run", label: "Run", icon: Sparkles },
+    { id: "presets", label: "Presets", icon: Bookmark },
     { id: "board", label: "Leaderboard", icon: Crown },
     { id: "frontier", label: "Chart", icon: LineChart },
     { id: "history", label: "History", icon: Activity },
@@ -3527,6 +3535,7 @@ export function BenchmarkPanel({
   ];
   const HEAD: Record<typeof view, { title: string; subtitle: string }> = {
     run: { title: "New Run", subtitle: "Configure your benchmark to compare models across domains and questions." },
+    presets: { title: "Presets", subtitle: "Reusable model bundles: run, apply, save, or schedule them in one click." },
     board: { title: "Leaderboard", subtitle: "Compare model performance across domains and find your top performers." },
     frontier: { title: "Chart", subtitle: "Visual analytics. Explore model performance across intelligence, cost, and speed." },
     history: { title: "History", subtitle: "Review and analyze past benchmark runs and model performance." },
@@ -3638,6 +3647,7 @@ export function BenchmarkPanel({
                   : questions.filter((q) => !q.archived && scope.has(q.domain.toLowerCase())).length
               }
               onRun={runBenchmark}
+              onOpenPresets={() => setView("presets")}
             />
             {monitorBatches.length > 0 && (
               <div className="w-full space-y-3 border-t border-border-subtle px-8 pb-6 pt-5">
@@ -3661,6 +3671,23 @@ export function BenchmarkPanel({
               </div>
             )}
           </>
+        )}
+        {view === "presets" && (
+          <BenchRunConfig
+            presetsView
+            mode={mode} setMode={setMode}
+            selModels={selModels} toggleModel={toggleModel}
+            allDomains={allDomains} scope={scope} toggleScope={toggleScope} scoped={!!initialDomain}
+            applyModels={applyModels} applyScope={applyScope} onRunSuite={runSuite}
+            questionCounts={questionCounts}
+            questionCount={
+              scope.size === 0
+                ? questions.filter((q) => !q.archived).length
+                : questions.filter((q) => !q.archived && scope.has(q.domain.toLowerCase())).length
+            }
+            onRun={runBenchmark}
+            onOpenPresets={() => setView("presets")}
+          />
         )}
         {view === "scout" && (
           <div className="px-8 pb-6">
