@@ -128,6 +128,7 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
         <ConnectorRunPanel
           appId={app.id}
           mode={run}
+          vault={vaultPath}
           onDone={() => { setRun(null); loadRuns(); onChanged(); }}
         />
       ) : (

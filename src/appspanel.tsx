@@ -2978,7 +2978,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
     try {
       const provider = getPref(PREF.memoryProvider, "claude");
       const model = getPref(PREF.distillModel, "claude-haiku-4-5");
-      const text = await invoke<string>("engine_app_draft_ideal", { id: app.id, provider, model });
+      const text = await invoke<string>("engine_app_draft_ideal", { id: app.id, provider, model, vault: vaultPath });
       if (text?.trim()) { setSoulDraft(text.trim()); setEditSoul(true); }
     } catch (e) { setDraftErr(String(e)); }
     finally { setDraftBusy(false); }
@@ -3004,7 +3004,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
       const hit = names.find((n) => new RegExp(`\\b${n.replace(/[^a-z0-9]/g, "")}\\b`).test(text.replace(/[^a-z0-9 ]/g, "")));
       const have = (app.domains ?? []).map((d) => d.toLowerCase());
       if (hit && !have.includes(hit)) {
-        await invoke("engine_app_set_domains", { id: app.id, domains: [...(app.domains ?? []), hit] });
+        await invoke("engine_app_set_domains", { id: app.id, domains: [...(app.domains ?? []), hit], vault: vaultPath });
       }
     } catch { /* domains optional */ }
     window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
@@ -3044,7 +3044,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
   const saveDomains = async () => {
     setDomBusy(true);
     try {
-      await invoke("engine_app_set_domains", { id: app.id, domains: [...domSel] });
+      await invoke("engine_app_set_domains", { id: app.id, domains: [...domSel], vault: vaultPath });
       setEditDomains(false);
       window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
       await onReload();
@@ -3486,7 +3486,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
 
             {learnMode ? (
               <div className="mt-3">
-                <ConnectorRunPanel appId={app.id} mode={learnMode} goal={goalText || undefined} url={appWebsite(app)}
+                <ConnectorRunPanel appId={app.id} mode={learnMode} goal={goalText || undefined} url={appWebsite(app)} vault={vaultPath}
                   onDone={(ok) => { void onReload(); loadSkills(); if (ok) { void applyLearnedConfig(goalText); setLearnMode(null); } }}
                   onClose={() => setLearnMode(null)} />
               </div>

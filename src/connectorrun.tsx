@@ -40,6 +40,7 @@ export function ConnectorRunPanel({
   mode,
   goal,
   url,
+  vault,
   onDone,
   onClose,
 }: {
@@ -47,6 +48,9 @@ export function ConnectorRunPanel({
   mode: ConnectorRunMode;
   goal?: string;
   url?: string;
+  // The active vault, forwarded to the engine so browser-learn/replay resolve
+  // the connector in the SAME vault the UI is showing (avoids "no connector").
+  vault?: string;
   onDone?: (ok: boolean) => void;
   onClose?: () => void;
 }) {
@@ -98,6 +102,7 @@ export function ConnectorRunPanel({
         return;
       }
       const args: Record<string, unknown> = { id: appId, session };
+      if (vault) args.vault = vault;
       if (mode === "learn") {
         if (goal) args.goal = goal;
         if (url) args.url = url;
