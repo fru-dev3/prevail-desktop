@@ -14,7 +14,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::engine;
-use crate::paths::{domain_dir, runtime_file};
+use crate::paths::domain_dir;
 use crate::{read_dir_retry, read_to_string_retry};
 
 #[tauri::command]
@@ -25,7 +25,7 @@ pub(crate) fn intent_append(
 ) -> Result<(), String> {
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir intents: {e}"))?;
-    let file = runtime_file(&vault, &domain, "_intents.jsonl");
+    let file = crate::paths::v4_content_path(&dir, ".system/intents.jsonl", "_intents.jsonl");
     let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
     engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write intent: {e}"))?;
     Ok(())
@@ -40,7 +40,7 @@ pub(crate) fn intents_read(
     domain: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let file = runtime_file(&vault, &domain, "_intents.jsonl");
+    let file = crate::paths::v4_content_path(&domain_dir(&vault, &domain), ".system/intents.jsonl", "_intents.jsonl");
     let text = match read_to_string_retry(&file) {
         Ok(t) => t,
         Err(_) => return Ok(vec![]),
@@ -66,7 +66,7 @@ pub(crate) fn intents_read(
 pub(crate) fn journal_append(vault: String, domain: Option<String>, entry: String) -> Result<(), String> {
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir journal: {e}"))?;
-    let path = runtime_file(&vault, &domain, "_journal.md");
+    let path = crate::paths::v4_content_path(&dir, "memory/journal.md", "_journal.md");
     const HEADER: &str = "# Journal\n\n";
     let existing = read_to_string_retry(&path).unwrap_or_default();
     let body = existing.strip_prefix(HEADER).unwrap_or(&existing).to_string();
@@ -115,7 +115,7 @@ pub(crate) fn intents_read_all_impl(vault: String, limit: Option<usize>) -> Resu
     }
     let mut out: Vec<serde_json::Value> = Vec::new();
     for (dom, dir) in dirs {
-        let Ok(text) = read_to_string_retry(&dir.join("_intents.jsonl")) else { continue };
+        let Ok(text) = read_to_string_retry(&crate::paths::v4_content_path(&dir, ".system/intents.jsonl", "_intents.jsonl")) else { continue };
         for l in text.lines().filter(|l| !l.trim().is_empty()) {
             let Ok(mut v) = serde_json::from_str::<serde_json::Value>(l) else { continue };
             if v.get("kind").and_then(|k| k.as_str()) != Some("intent") {
@@ -478,7 +478,7 @@ pub(crate) fn decision_append(
 ) -> Result<(), String> {
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir decisions: {e}"))?;
-    let file = runtime_file(&vault, &domain, "_decisions.jsonl");
+    let file = crate::paths::v4_content_path(&domain_dir(&vault, &domain), "memory/decisions.jsonl", "_decisions.jsonl");
     // Dedup: skip if an identical decision (same prompt + verdict + action) is
     // already logged - a re-render or retry shouldn't create a duplicate entry.
     let dkey = |v: &serde_json::Value| -> String {
@@ -509,7 +509,7 @@ pub(crate) fn decisions_read(
     // Read the primary ledger, plus (for General) the pre-build/ root copy, and
     // merge - so a tidied vault that split decisions across root + build/ shows a
     // single deduped list instead of hiding half of them.
-    let primary = runtime_file(&vault, &domain, "_decisions.jsonl");
+    let primary = crate::paths::v4_content_path(&domain_dir(&vault, &domain), "memory/decisions.jsonl", "_decisions.jsonl");
     let mut files = vec![primary.clone()];
     if domain.is_none() {
         let root_copy = std::path::PathBuf::from(&vault).join("_decisions.jsonl");
@@ -545,7 +545,7 @@ pub(crate) fn decision_feedback(
     rating: String, // "up" | "down" | "clear"
     note: Option<String>,
 ) -> Result<(), String> {
-    let file = runtime_file(&vault, &domain, "_decisions.jsonl");
+    let file = crate::paths::v4_content_path(&domain_dir(&vault, &domain), "memory/decisions.jsonl", "_decisions.jsonl");
     let text = read_to_string_retry(&file).map_err(|e| format!("read _decisions.jsonl: {e}"))?;
     let mut lines: Vec<serde_json::Value> = text
         .lines()
