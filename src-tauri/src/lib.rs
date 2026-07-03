@@ -596,6 +596,8 @@ pub fn run() {
             idealstate::read_domain_ideal,
             idealstate::write_domain_ideal,
             engine::engine_vault_status,
+            engine::machine_role_get,
+            engine::machine_role_set,
             engine::mcp_test_handshake,
             integrations::capture_status,
             integrations::capture_install,

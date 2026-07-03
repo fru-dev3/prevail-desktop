@@ -3,7 +3,7 @@
 // setup).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion";
-import { Activity, Archive, ArrowRight, Briefcase, Clock, Cloud, Cpu, Folder, FolderLock, FolderOpen, Ghost, Globe, Heart, Home, KeyRound, Layers, Lock, Plus, Receipt, RefreshCw, Shield, ShieldCheck, Sparkles, TrendingUp, Users, Wallet, X, Zap } from "lucide-react";
+import { Activity, Archive, ArrowRight, Briefcase, Clock, Cloud, Cpu, Folder, FolderLock, FolderOpen, Ghost, Globe, Heart, Home, KeyRound, Laptop, Layers, Lock, Plus, Receipt, RefreshCw, Server, Shield, ShieldCheck, Sparkles, TrendingUp, Users, Wallet, X, Zap } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { PREF, getPref } from "./storage";
@@ -445,20 +445,32 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
   // whether prompts are logged + memory is written. Reflected live so the bar
   // updates the instant the master toggle fires `prevail:incognito-changed`.
   const [incognito, setIncognito] = useState(() => getPref(PREF.incognito, "0") === "1");
+  // Machine role (hub | client) for a vault shared across two Macs. Shown in the
+  // trust bar so it's obvious at a glance which machine this is: the always-on
+  // HUB that runs all background automation, or a CLIENT that captures prompts
+  // only. Sourced from the CLI (prevail role) via a Tauri command, exactly like
+  // the other bar indicators pull their state from the backend. Defaults to hub.
+  const [machineRole, setMachineRole] = useState<"hub" | "client">("hub");
   useEffect(() => {
     const pull = () => { void invoke<{ enabled: boolean }>("vault_lock_status").then((s) => setVaultLocked(s?.enabled !== false)).catch(() => {}); };
     const syncIncognito = () => setIncognito(getPref(PREF.incognito, "0") === "1");
+    const pullRole = () => { void invoke<string>("machine_role_get").then((r) => setMachineRole(r === "client" ? "client" : "hub")).catch(() => {}); };
     pull();
     syncIncognito();
+    pullRole();
     window.addEventListener("prevail:vault-lock-changed", pull);
     window.addEventListener("prevail:incognito-changed", syncIncognito);
+    window.addEventListener("prevail:role-changed", pullRole);
     window.addEventListener("focus", pull);
     window.addEventListener("focus", syncIncognito);
+    window.addEventListener("focus", pullRole);
     return () => {
       window.removeEventListener("prevail:vault-lock-changed", pull);
       window.removeEventListener("prevail:incognito-changed", syncIncognito);
+      window.removeEventListener("prevail:role-changed", pullRole);
       window.removeEventListener("focus", pull);
       window.removeEventListener("focus", syncIncognito);
+      window.removeEventListener("focus", pullRole);
     };
   }, []);
   // The bar carries three INDEPENDENT trust axes, each its own labelled segment
@@ -518,6 +530,18 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
           />
         </>
       )}
+      {/* 4. Machine role - which Mac this is for a shared vault. Distinct icon
+          (server tower for the hub, laptop for a client) so it's obvious at a
+          glance. Always shown; hub is the default single-machine state. */}
+      {divider}
+      <Seg
+        Icon={machineRole === "hub" ? Server : Laptop}
+        label={machineRole === "hub" ? "Hub" : "Client"}
+        on
+        tip={machineRole === "hub"
+          ? "Hub: this Mac runs all background automation for the vault (learn, loops, connector sync, schedule ticks)."
+          : "Client: this Mac captures prompts only. Background automation for the shared vault runs on the hub."}
+      />
       {/* Version - inside the ribbon so it inherits the high-contrast ribbon
           text color (the old standalone pill was invisible over the dark bar). */}
       <span className="pointer-events-none absolute right-3 select-none font-mono text-[10px] tracking-wider opacity-70">
