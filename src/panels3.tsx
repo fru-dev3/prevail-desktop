@@ -54,12 +54,42 @@ export function resolveAppLogo(app: { title?: string; id?: string }, logos: Reco
 // brand mark; only when nothing resolves does it fall back to the app's
 // letter/initials monogram. This is the single way logos render across all app
 // surfaces (rows, cards, connect flow) so they stay consistent.
+// Best-effort website host for an app, used to fetch its real favicon when no
+// crisp brand icon exists. Uses the curated map where we have it, else guesses
+// www.<slug>.<tld> — a wrong guess just triggers the letter fallback via onError.
+function faviconHost(app: { title?: string; id?: string; website?: string }): string {
+  if (app.website) { try { return new URL(app.website).hostname; } catch { /* fall through */ } }
+  const slug = (app.title || app.id || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const known: Record<string, string> = {
+    canva: "canva.com", notion: "notion.so", slack: "slack.com", figma: "figma.com",
+    linear: "linear.app", airtable: "airtable.com", canny: "canny.io", skyscanner: "skyscanner.net",
+    calendly: "calendly.com", opentable: "opentable.com", alltrails: "alltrails.com",
+    composio: "composio.dev", nango: "nango.dev",
+  };
+  return known[slug] || `www.${slug}.com`;
+}
+
 export function AppRowLogo({ app, logos, size = 32, fallback = "initials" }: {
-  app: { title?: string; id?: string };
+  app: { title?: string; id?: string; website?: string };
   logos: Record<string, BrandLogo>;
   size?: number;
   fallback?: "initials" | "letter";
 }) {
+  // The site's real favicon (a base64 data: URI from the backend, cached to
+  // disk, CSP-safe). Fetched only when there's no crisp brand icon. Declared
+  // first so rules-of-hooks holds across the early returns below.
+  const [faviconUri, setFaviconUri] = useState<string | null>(null);
+  const wantFavicon = !!(app.id || app.title);
+  useEffect(() => {
+    if (!wantFavicon) return;
+    let alive = true;
+    const host = faviconHost(app);
+    invoke<string>("app_favicon", { host })
+      .then((uri) => { if (alive && uri) setFaviconUri(uri); })
+      .catch(() => {});
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [app.id, app.title]);
   const glyph = Math.round(size * 0.56);
   const box = { height: size, width: size };
   // The real, colorful Google mark (not a flat monochrome glyph) for the Google
@@ -87,6 +117,16 @@ export function AppRowLogo({ app, logos, size = 32, fallback = "initials" }: {
     );
   }
   const name = app.title || app.id || "·";
+  // No crisp brand icon, but the backend returned the site's real favicon: show
+  // it (a data: URI, CSP-safe). This gives almost every app its actual logo
+  // (simple-icons dropped many brands like Canva). Falls to the letter otherwise.
+  if (faviconUri) {
+    return (
+      <span className="flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border-subtle bg-white" style={box}>
+        <img src={faviconUri} width={Math.round(size * 0.7)} height={Math.round(size * 0.7)} alt={name} style={{ objectFit: "contain" }} />
+      </span>
+    );
+  }
   const mono = fallback === "letter"
     ? name.charAt(0).toUpperCase()
     : name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();

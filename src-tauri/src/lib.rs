@@ -46,6 +46,7 @@ mod activity;
 mod ingestion;
 mod runtime_connectors;
 mod retrospect;
+mod favicon;
 mod composio;
 mod nango;
 mod reminders;
@@ -549,6 +550,7 @@ pub fn run() {
             google::google_profiles,
             runtime_connectors::discover_runtime_connectors,
             retrospect::retrospect_rollup,
+            favicon::app_favicon,
             google::google_profile_login,
             google::google_profile_remove,
             google::google_scaffold,
