@@ -3,7 +3,48 @@ import { invoke } from "./bridge";
 import { DEAD_MODELS, DISCOVERED_MODELS, MODELS, SYCOPHANCY_RE } from "./constants";
 import { titleCase } from "./format";
 import { lsGet, lsSet } from "./storage";
-import type { ModelPick, PanelistReply, PanelistSlot } from "./types";
+import type { ModelPick, PanelistReply, PanelistSlot, SkillEntry } from "./types";
+
+// Build the prompt preamble for the skills the user attached via /skills or the
+// pinned-skills row. The old behavior injected only the skill NAMES ("Use the
+// following skills: /foo") - telling the model to follow instructions it never
+// saw, so attaching a skill did nothing. This loads each skill's SKILL.md body
+// (via read_skill) and includes it, so the guidance actually reaches the model.
+// Best-effort and size-capped: a skill that can't be read is skipped. When the
+// same name exists in several domains, the current domain's copy wins.
+export async function buildSkillsPreamble(
+  attachedSkills: string[],
+  allSkills: SkillEntry[],
+  domain: string | null,
+  opts: { perSkillChars?: number; totalChars?: number } = {},
+): Promise<string> {
+  if (!attachedSkills.length) return "";
+  const perSkill = opts.perSkillChars ?? 4000;
+  const total = opts.totalChars ?? 12000;
+  const chosen: SkillEntry[] = [];
+  for (const name of attachedSkills) {
+    const matches = allSkills.filter((s) => s.name === name);
+    if (!matches.length) continue;
+    const pick = (domain && matches.find((s) => s.domain === domain)) || matches[0];
+    if (pick && !chosen.includes(pick)) chosen.push(pick);
+  }
+  if (!chosen.length) return "";
+  const blocks: string[] = [];
+  let used = 0;
+  for (const s of chosen) {
+    if (used >= total) break;
+    let body = "";
+    try { body = (await invoke<string>("read_skill", { path: s.path })).trim(); } catch { body = ""; }
+    if (!body) continue;
+    const slice = body.slice(0, Math.min(perSkill, total - used));
+    used += slice.length;
+    blocks.push(
+      `## /${s.name}${s.description ? ` - ${s.description}` : ""}\n${slice}${body.length > slice.length ? "\n...(truncated)" : ""}`,
+    );
+  }
+  if (!blocks.length) return "";
+  return `--- Skills to apply ---\nThe user attached these skills. Follow their instructions where they apply to the request.\n\n${blocks.join("\n\n")}\n--- End skills ---\n\n`;
+}
 
 // Best-effort live model discovery for the given providers; fills
 // DISCOVERED_MODELS and notifies listeners via prevail:models-refreshed. Never

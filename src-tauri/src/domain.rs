@@ -285,37 +285,41 @@ fn context_for_root(root: PathBuf, extra_base: Option<PathBuf>, domain_label: &s
         }
     }
 
-    // Skills — re-scan only this domain's _skills/ (the on-disk convention used
-    // by the bundled sample vault + the engine's heartbeat writer).
+    // Skills — scan BOTH on-disk conventions: `_skills/` (bundled sample vault,
+    // the engine's heartbeat writer, and the desktop's skill_create) and
+    // `skills/` (CLI daemon distill/scaffold). Reading only `_skills/` before
+    // made any CLI-generated skill invisible in the domain's Skills tab.
     let mut skills: Vec<SkillEntry> = Vec::new();
-    let skills_dir = root.join("_skills");
-    if skills_dir.is_dir() {
-        if let Ok(it) = read_dir_retry(&skills_dir) {
-            for entry in it.flatten() {
-                let p = entry.path();
-                if !p.is_dir() { continue; }
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with('.') { continue; }
-                let mut description: Option<String> = None;
-                for candidate in &["SKILL.md", "README.md", "skill.md"] {
-                    let f = p.join(candidate);
-                    if let Ok(s) = read_to_string_retry(&f) {
-                        if let Some(desc) = extract_skill_description(&s) {
-                            description = Some(desc);
-                            break;
-                        }
+    for sub in &["_skills", "skills"] {
+        let skills_dir = root.join(sub);
+        if !skills_dir.is_dir() { continue; }
+        let Ok(it) = read_dir_retry(&skills_dir) else { continue };
+        for entry in it.flatten() {
+            let p = entry.path();
+            if !p.is_dir() { continue; }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') { continue; }
+            // Same-named skill in both dirs: keep the first (from `_skills/`).
+            if skills.iter().any(|s| s.name == name) { continue; }
+            let mut description: Option<String> = None;
+            for candidate in &["SKILL.md", "README.md", "skill.md"] {
+                let f = p.join(candidate);
+                if let Ok(s) = read_to_string_retry(&f) {
+                    if let Some(desc) = extract_skill_description(&s) {
+                        description = Some(desc);
+                        break;
                     }
                 }
-                skills.push(SkillEntry {
-                    domain: domain_label.to_string(),
-                    name,
-                    path: p.to_string_lossy().to_string(),
-                    description,
-                });
             }
-            skills.sort_by(|a, b| a.name.cmp(&b.name));
+            skills.push(SkillEntry {
+                domain: domain_label.to_string(),
+                name,
+                path: p.to_string_lossy().to_string(),
+                description,
+            });
         }
     }
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok(DomainContext { state, decisions, journal, recent_logs, skills })
 }
@@ -365,25 +369,48 @@ pub(crate) fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
     if !root.exists() {
         return Ok(vec![]);
     }
+    // Enumerate domain dirs the SAME way scan_vault does: the v4 container
+    // (data/domains), then the v3 container (domains/), then the legacy flat
+    // root. Previously this read only the flat root, so in a v4 vault (domains
+    // live under data/domains) it found no domains and /skills was always empty.
+    let mut domain_dirs: Vec<(String, PathBuf)> = Vec::new();
+    let mut seen_domains: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let v4_domains = crate::paths::data_root(&vault).join("domains");
+    let v3_domains = root.join("domains");
+    let mut containers: Vec<PathBuf> = vec![v4_domains.clone()];
+    if v3_domains != v4_domains {
+        containers.push(v3_domains);
+    }
+    containers.push(root.clone()); // legacy flat: domains directly under the vault
+    for container in &containers {
+        let Ok(entries) = fs::read_dir(container) else { continue };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if !p.is_dir() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || crate::NON_DOMAIN_DIRS.contains(&name.as_str()) {
+                continue;
+            }
+            if seen_domains.insert(name.clone()) {
+                domain_dirs.push((name, p));
+            }
+        }
+    }
+
     let mut out: Vec<SkillEntry> = Vec::new();
-    let entries = match fs::read_dir(&root) {
-        Ok(e) => e,
-        Err(_) => return Ok(vec![]),
-    };
-    for entry in entries.flatten() {
-        let domain_path = entry.path();
-        if !domain_path.is_dir() {
-            continue;
-        }
-        let domain_name = entry.file_name().to_string_lossy().to_string();
-        if crate::NON_DOMAIN_DIRS.contains(&domain_name.as_str()) || domain_name.starts_with('.') {
-            continue;
-        }
-        let skills_dir = domain_path.join("_skills");
-        if !skills_dir.exists() || !skills_dir.is_dir() {
-            continue;
-        }
-        if let Ok(skills) = fs::read_dir(&skills_dir) {
+    for (domain_name, domain_path) in domain_dirs {
+        // Read BOTH skill-dir conventions: `_skills/` (bundled packs + the
+        // desktop's skill_create) and `skills/` (CLI daemon distill/scaffold).
+        // Before, only `_skills/` was read, so any skill the CLI generated into
+        // `skills/` never appeared in the Skills tab or /skills autocomplete.
+        for sub in &["_skills", "skills"] {
+            let skills_dir = domain_path.join(sub);
+            if !skills_dir.is_dir() {
+                continue;
+            }
+            let Ok(skills) = fs::read_dir(&skills_dir) else { continue };
             for skill in skills.flatten() {
                 let p = skill.path();
                 if !p.is_dir() {
@@ -391,6 +418,11 @@ pub(crate) fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
                 }
                 let name = skill.file_name().to_string_lossy().to_string();
                 if name.starts_with('.') {
+                    continue;
+                }
+                // A skill of the same name in both dirs: keep the first (from
+                // `_skills/`) so it isn't listed twice.
+                if out.iter().any(|s| s.domain == domain_name && s.name == name) {
                     continue;
                 }
                 // Try to read a SKILL.md or README.md for a one-line description.
@@ -420,7 +452,7 @@ pub(crate) fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
 }
 
 /// I7: create a reusable skill from the UI (e.g. "save this prompt as a skill").
-/// Writes `<vault>/<domain>/skills/<slug>/SKILL.md` with `runner: llm` frontmatter
+/// Writes `<vault>/<domain>/_skills/<slug>/SKILL.md` with `runner: llm` frontmatter
 /// and the supplied body as the prompt. Returns the file path. The slug is
 /// sanitized to `[a-z0-9-]` which also makes path-traversal impossible.
 #[tauri::command]
