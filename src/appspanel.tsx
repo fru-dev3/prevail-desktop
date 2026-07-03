@@ -918,7 +918,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                   {/* My list - the user's pinned apps, connected or catalog, up top.
                       Collapsible (fix #4); collapsed by default. */}
                   {pinned.count > 0 && (
-                    <section className="space-y-1">
+                    <section className="space-y-0.5">
                       <button onClick={toggleMyList} className="flex w-full items-center gap-1 px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent transition-colors hover:text-accent-hover">
                         <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${myListOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
                         <Star className="h-2.5 w-2.5 fill-accent" /> My list · {pinned.count}
@@ -949,7 +949,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                     </section>
                   )}
                   {groups.map((g) => (
-                    <section key={g.key} className="space-y-1">
+                    <section key={g.key} className="space-y-0.5">
                       <div className={`px-1 font-mono text-[10px] uppercase tracking-[0.2em] ${g.tint}`}>{g.label} · {g.apps.length}</div>
                       {g.apps.map((a) => (
                         <ConnectorRow
@@ -969,7 +969,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
                       below the user's own apps so installed-and-working stays
                       visually distinct from catalog-available. */}
                   {catalogView.shown.length > 0 && (
-                    <section className="space-y-1">
+                    <section className="space-y-0.5">
                       <button onClick={toggleAvail} className="flex w-full items-center gap-1 px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted transition-colors hover:text-text-secondary">
                         <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${availOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
                         Available to add · {catalogView.total}
@@ -1596,14 +1596,14 @@ function ComposioMode({ vaultPath, expanded }: { vaultPath: string; expanded: bo
         list={
           <div className="space-y-4">
             {connectedApps.length > 0 && (
-              <section className="space-y-1">
+              <section className="space-y-0.5">
                 <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
                 {connectedApps.map((a) => (
                   <GatewayRow key={a.slug} title={a.name} sub={a.cat} logoId={a.slug} logos={logos} connected active={selectedSlug === a.slug} onSelect={() => setSelectedSlug(a.slug)} fav={gatewayFav(a.slug, a.name)} />
                 ))}
               </section>
             )}
-            <section className="space-y-1">
+            <section className="space-y-0.5">
               <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to connect · {availableApps.length}</div>
               {availableApps.map((a) => (
                 <GatewayRow key={a.slug} title={a.name} sub={a.cat} logoId={a.slug} logos={logos} active={selectedSlug === a.slug} onSelect={() => setSelectedSlug(a.slug)} />
@@ -1805,14 +1805,14 @@ function NangoMode({ vaultPath, expanded }: { vaultPath: string; expanded: boole
           ) : (
             <div className="space-y-4">
               {connectedApps.length > 0 && (
-                <section className="space-y-1">
+                <section className="space-y-0.5">
                   <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">Connected · {connectedApps.length}</div>
                   {connectedApps.map((i) => (
                     <GatewayRow key={i.unique_key} title={i.display_name} sub={i.provider || i.unique_key} logoId={i.provider || i.unique_key} logos={logos} connected active={selectedKey === i.unique_key} onSelect={() => setSelectedKey(i.unique_key)} fav={gatewayFav(i.unique_key, i.display_name)} />
                   ))}
                 </section>
               )}
-              <section className="space-y-1">
+              <section className="space-y-0.5">
                 <div className="px-1 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">Available to connect · {availableApps.length}</div>
                 {availableApps.map((i) => (
                   <GatewayRow key={i.unique_key} title={i.display_name} sub={i.provider || i.unique_key} logoId={i.provider || i.unique_key} logos={logos} active={selectedKey === i.unique_key} onSelect={() => setSelectedKey(i.unique_key)} />
@@ -2013,13 +2013,14 @@ function GatewayConnectDetail({ title, sub, logoId, logos, method, connecting, o
 // and category are revealed on HOVER (a quiet line under the name) and repeated,
 // with the row's actions, inside a kebab menu on the right. Active rows get a
 // strong, distinct highlight: accent-soft fill + a thick left accent bar + ring.
-const ROW_BASE = "group relative flex items-center gap-1 rounded-lg border-l-[3px] pr-1.5 transition-colors";
+// Clean nav language matching the Arena rail: no left-border, no ring, no
+// dividers — just a rounded row that fills with the accent pill when selected
+// and warms on hover. (Arena's domain rows use the exact same treatment.)
+const ROW_BASE = "group relative flex items-center gap-1 rounded-lg pr-1.5 transition-colors";
 function rowCls(active: boolean): string {
-  // Arena section-nav language: the active row reads as a raised white card
-  // (bg-surface + soft shadow + a faint black ring), inactive rows warm on hover.
   return `${ROW_BASE} ${active
-    ? "border-l-accent bg-surface shadow-sm ring-1 ring-black/5"
-    : "border-l-transparent ring-1 ring-transparent hover:border-l-border hover:bg-surface-warm hover:ring-border-subtle"}`;
+    ? "bg-accent shadow-sm"
+    : "hover:bg-surface-warm"}`;
 }
 
 type KebabAction = { icon: LucideIcon; label: string; onClick: () => void };
@@ -2098,7 +2099,7 @@ function RowKebab({ method, category, statusLabel, statusDot, actions, visible }
 // row never reflows when it fades in; stays visible while the row is active.
 function RowMeta({ method, category, active }: { method: string; category?: string; active: boolean }) {
   return (
-    <span className={`mt-0.5 block h-3 truncate font-mono text-[10px] uppercase tracking-wider text-text-muted transition-opacity group-hover:opacity-100 ${active ? "opacity-100" : "opacity-0"}`}>
+    <span className={`mt-0.5 block h-3 truncate font-mono text-[10px] uppercase tracking-wider transition-opacity group-hover:opacity-100 ${active ? "text-background/70 opacity-100" : "text-text-muted opacity-0"}`}>
       {method}{category ? ` · ${category}` : ""}
     </span>
   );
@@ -2121,7 +2122,7 @@ function ConnectorRow({ app, logos, status, active, onSelect, isFav, onToggleFav
       <button onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pl-2.5 text-left">
         <AppRowLogo app={app} logos={logos} size={28} fallback="letter" />
         <span className="min-w-0 flex-1">
-          <span className={`block truncate text-sm font-semibold ${active ? "text-accent" : "text-text-primary"}`}>{app.title || app.id}</span>
+          <span className={`block truncate text-sm font-semibold ${active ? "text-background" : "text-text-primary"}`}>{app.title || app.id}</span>
           <RowMeta method={method} category={category} active={active} />
         </span>
       </button>
