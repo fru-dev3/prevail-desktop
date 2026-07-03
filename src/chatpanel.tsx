@@ -453,7 +453,11 @@ export function ChatPanel({
     setSoulDraftErr(null);
     try {
       const provider = getPref(PREF.memoryProvider, "claude");
-      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      // Don't hand a claude model id to a non-claude CLI (see distillNow).
+      const storedModel = getPref(PREF.distillModel, "");
+      const model = provider === "claude"
+        ? (storedModel || "claude-haiku-4-5")
+        : (storedModel && !storedModel.startsWith("claude") ? storedModel : "");
       const text = await invoke<string>("domain_draft_ideal", { vault: vaultPath, domain: domain || "general", provider, model });
       if (text?.trim()) { setSoulDraft(text.trim()); setEditSoul(true); }
       else setSoulDraftErr("The draft came back empty. Try again or write your own.");

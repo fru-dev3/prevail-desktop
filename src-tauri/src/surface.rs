@@ -222,10 +222,15 @@ AI council and background loops work toward.\n\n\
 Write a COMPREHENSIVE ideal state in markdown, NOT one or two sentences. Cover, in short titled \
 sections: the vision (what a thriving {domain} looks like), the concrete outcomes and targets that \
 define it, the metrics or signals worth tracking, the habits and routines that sustain it, the \
-risks or anti-patterns to avoid, and what good looks like day to day. Ground EVERY part in the \
-context below: reference their actual situation, goals, and decisions wherever possible, and stay \
-aspirational but realistic. Write in the second person or declarative voice. No preamble, no meta \
-commentary, no surrounding quotes, and do not use em dashes. Return ONLY the ideal-state markdown.\n\n\
+risks or anti-patterns to avoid, and what good looks like day to day. Ground every part in the \
+context below wherever it exists: reference their actual situation, goals, and decisions. \
+IF THE CONTEXT IS SPARSE OR EMPTY (a brand-new domain), still produce the FULL comprehensive \
+draft: reason from first principles about what a thriving \"{domain}\" means for a thoughtful \
+person in general - e.g. for wealth, cover net worth, savings rate, investing, debt, income, and \
+protection; for health, cover fitness, sleep, nutrition, preventive care, and mental wellbeing - \
+so the user has a rich starting point to edit rather than a blank page. Stay aspirational but \
+realistic. Write in the second person or declarative voice. No preamble, no meta commentary, no \
+surrounding quotes, and do not use em dashes. Return ONLY the ideal-state markdown.\n\n\
 --- CONTEXT ---\n{context}",
         crate::ideal_state_preamble(Path::new(&vault)),
     );
