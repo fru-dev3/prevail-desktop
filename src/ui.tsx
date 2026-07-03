@@ -23,13 +23,15 @@ export function Toggle({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!on)}
-      className={`inline-flex h-5 w-9 shrink-0 items-center overflow-hidden rounded-full px-0.5 transition-colors disabled:opacity-50 ${
-        on ? "bg-accent" : "bg-surface-strong"
+      className={`inline-flex h-5 w-9 shrink-0 items-center overflow-hidden rounded-full border px-0.5 transition-colors disabled:opacity-50 ${
+        on
+          ? "border-accent bg-accent"
+          : "border-border bg-text-muted/25"
       }`}
     >
       <span
-        className={`h-4 w-4 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-transform duration-200 ${
-          on ? "translate-x-4" : "translate-x-0"
+        className={`h-4 w-4 rounded-full bg-white shadow-sm ring-1 transition-transform duration-200 ${
+          on ? "translate-x-4 ring-black/20" : "translate-x-0 ring-black/25"
         }`}
       />
     </button>
