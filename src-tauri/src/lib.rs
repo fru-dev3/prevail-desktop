@@ -483,6 +483,7 @@ pub fn run() {
             domain::domain_tree,
             domain::read_domain_prompts,
             domain::scan_skills,
+            domain::skill_set_enabled,
             domain::skill_create,
             children::abort_sessions,
             idealstate::read_user_md,

@@ -42,7 +42,7 @@ export interface DomainContextBundle {
   decisions: string | null;
   journal: string | null;
   recent_logs: DomainLogEntry[];
-  skills: { domain: string; name: string; path: string; description: string | null }[];
+  skills: { domain: string; name: string; path: string; description: string | null; enabled?: boolean }[];
 }
 
 export interface ScoreDimension {
@@ -472,6 +472,9 @@ export interface SkillEntry {
   name: string;
   path: string;
   description: string | null;
+  // Disabled skills stay on disk but are excluded from /skills + auto-attach.
+  // Optional for back-compat with any caller that predates the field.
+  enabled?: boolean;
 }
 
 export interface IngestionTierStatus {

@@ -775,7 +775,8 @@ export function ChatPanel({
   const [allSkills, setAllSkills] = useState<SkillEntry[]>([]);
   useEffect(() => {
     if (!vaultPath) { setAllSkills([]); return; }
-    invoke<SkillEntry[]>("scan_skills", { vault: vaultPath }).then(setAllSkills).catch(() => setAllSkills([]));
+    // Only ENABLED skills feed /skills + auto-attach; disabled ones are hidden.
+    invoke<SkillEntry[]>("scan_skills", { vault: vaultPath }).then((s) => setAllSkills(s.filter((x) => x.enabled !== false))).catch(() => setAllSkills([]));
   }, [vaultPath]);
   // Brand logos for app rows/chips in the `$` mention popover - same source the
   // Apps panel uses. Without this the chat composer can only show monograms.

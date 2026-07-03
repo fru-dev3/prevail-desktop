@@ -485,15 +485,32 @@ export function DomainContextDrawer({
                 <div className="text-xs text-text-muted">drop a folder under <code className="text-accent">{titleCase(domain)}/_skills/</code> with a SKILL.md.</div>
               ) : (
                 <ul className="space-y-1">
-                  {ctx.skills.map((s) => (
-                    <li key={s.path} className="flex items-stretch gap-1">
+                  {ctx.skills.map((s) => {
+                    const on = s.enabled !== false;
+                    return (
+                    <li key={s.path} className={`flex items-stretch gap-1 ${on ? "" : "opacity-55"}`}>
                       <button
                         onClick={() => onInsertSkill(s.name)}
-                        className="flex-1 rounded border border-border-subtle bg-background px-2 py-1.5 text-left hover:border-accent-border hover:bg-surface-warm"
+                        disabled={!on}
+                        title={on ? "Insert /skill" : "Disabled - enable it to use"}
+                        className="flex-1 rounded border border-border-subtle bg-background px-2 py-1.5 text-left hover:border-accent-border hover:bg-surface-warm disabled:cursor-default disabled:hover:border-border-subtle disabled:hover:bg-background"
                       >
                         <div className="font-mono text-[11px] text-accent">/{s.name}</div>
                         {s.description && <div className="mt-0.5 line-clamp-2 text-[10px] text-text-muted">{s.description}</div>}
                       </button>
+                      {/* Enable/disable: a disabled skill stays on disk but is
+                          excluded from /skills + auto-attach. */}
+                      <span className="flex shrink-0 items-center px-1" title={on ? "Enabled - slide left to disable" : "Disabled - slide right to enable"}>
+                        <Toggle
+                          on={on}
+                          label={`${on ? "Disable" : "Enable"} ${s.name}`}
+                          onChange={(next) => {
+                            void invoke("skill_set_enabled", { vault: vaultPath, domain: s.domain, name: s.name, enabled: next })
+                              .then(() => window.dispatchEvent(new Event("prevail:context-changed")))
+                              .catch((e) => console.error("skill_set_enabled", e));
+                          }}
+                        />
+                      </span>
                       {onTogglePreferred && (
                         <button
                           onClick={() => onTogglePreferred(s.name)}
@@ -508,7 +525,8 @@ export function DomainContextDrawer({
                         </button>
                       )}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )
             } />
