@@ -11,6 +11,7 @@ import { BoardPanel } from "./boardpanel";
 import { AppsPanel } from "./appspanel";
 import { RecommendationsPanel } from "./recommendationspanel";
 import { SystemActivity } from "./activitypanel";
+import { RetrospectPanel } from "./retrospectpanel";
 import { AutonomyPanel } from "./autonomypanel";
 import { LoopBoard } from "./loopboard";
 import { SparkPanel } from "./spark";
@@ -51,7 +52,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "autonomy" | "council" | "gateway" | "mcp" | "prompt-capture" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "loopboard" | "spark" | "hooks" | "profiles";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "autonomy" | "council" | "gateway" | "mcp" | "prompt-capture" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "retrospect" | "loopboard" | "spark" | "hooks" | "profiles";
   // Editor lands on General. The operational surfaces (Work board / Insights /
   // Spark) moved to Work mode, so Editor opens on a config page. A specific
   // jumpTo (e.g. "connectors") still wins.
@@ -160,6 +161,7 @@ export function SettingsPanel({
               not a divider-separated section. */}
           {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
           {section === "activity" && <SystemActivity vaultPath={vaultPath} />}
+          {section === "retrospect" && <RetrospectPanel vaultPath={vaultPath} />}
           {section === "loopboard" && <LoopBoard vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {/* Apps bleeds past the page's left padding so its panel attaches
