@@ -193,25 +193,88 @@ Return ONLY a JSON array (no prose, no markdown fences). Each element:\n\
 Produce 3-8 intents, most important first. Be specific and genuinely useful; \
 never invent facts not supported by the prompts. For \"sources\", list ONLY surfaces \
 that actually appear in this intent's prompts; never invent one.\n\n\
+OUTPUT FORMAT (non-negotiable): your entire response MUST be a single JSON array. \
+Begin with `[` and end with `]`. No preamble, no explanation, no markdown fences. \
+If there is nothing to report, output exactly `[]`.\n\n\
 PROMPT LOG:\n{activity}\n"
     )
 }
 
-/// Pull the JSON array out of a model's output (which may wrap it in prose or
-/// ```json fences). Returns the parsed array of intent objects.
+/// Strip a leading/trailing markdown code fence (```json ... ```), returning the
+/// inner content. No fence -> the input trimmed.
+fn strip_code_fences(s: &str) -> &str {
+    let s = s.trim();
+    if let Some(rest) = s.strip_prefix("```") {
+        // Drop an optional language tag on the fence's first line.
+        let rest = rest.splitn(2, '\n').nth(1).unwrap_or(rest);
+        return rest.trim_end().strip_suffix("```").unwrap_or(rest).trim();
+    }
+    s
+}
+
+/// The balanced `[ ... ]` slice that STARTS at byte index `start` (which must be
+/// a `[`), string/escape aware. None if it never closes.
+fn balanced_array_from(s: &str, start: usize) -> Option<&str> {
+    let b = s.as_bytes();
+    let (mut depth, mut in_str, mut esc) = (0i32, false, false);
+    for i in start..b.len() {
+        let c = b[i];
+        if esc {
+            esc = false;
+        } else if in_str {
+            match c {
+                b'\\' => esc = true,
+                b'"' => in_str = false,
+                _ => {}
+            }
+        } else {
+            match c {
+                b'"' => in_str = true,
+                b'[' => depth += 1,
+                b']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(&s[start..=i]);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+/// Pull the JSON array out of a model's output. Robust to markdown fences, a
+/// `{"intents":[...]}` wrapper, and leading/trailing prose - the old first-`[`/
+/// last-`]` slice failed ("model output had no JSON array") whenever the model
+/// added any preamble. Returns the parsed array of intent objects.
 fn parse_intents_output(out: &str) -> Result<serde_json::Value, String> {
-    let start = out.find('[').ok_or("model output had no JSON array")?;
-    let end = out.rfind(']').ok_or("model output had no closing ]")?;
-    if end <= start {
-        return Err("malformed JSON array in model output".into());
+    let cleaned = strip_code_fences(out);
+    // 1) Whole thing already parses as an array, or a {"intents":[...]} wrapper.
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(cleaned) {
+        if v.is_array() {
+            return Ok(v);
+        }
+        if let Some(arr) = v.get("intents").filter(|a| a.is_array()) {
+            return Ok(arr.clone());
+        }
     }
-    let slice = &out[start..=end];
-    let v: serde_json::Value =
-        serde_json::from_str(slice).map_err(|e| format!("parse intents JSON: {e}"))?;
-    if !v.is_array() {
-        return Err("model output was not a JSON array".into());
+    // 2) Try each `[` in turn: take the balanced array starting there and parse
+    // it; return the first that is a valid JSON array. This skips stray prose
+    // brackets like "[see below]" that aren't valid JSON.
+    let mut from = 0usize;
+    while let Some(rel) = cleaned[from..].find('[') {
+        let start = from + rel;
+        if let Some(slice) = balanced_array_from(cleaned, start) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(slice) {
+                if v.is_array() {
+                    return Ok(v);
+                }
+            }
+        }
+        from = start + 1;
     }
-    Ok(v)
+    Err("model output had no JSON array".into())
 }
 
 /// Count every intent record across the vault. Cheap signal the daemon uses to
@@ -543,5 +606,50 @@ mod capture_source_tests {
         assert_eq!(limited.len(), 2);
 
         let _ = fs::remove_dir_all(&vault);
+    }
+}
+
+#[cfg(test)]
+mod parse_intents_tests {
+    use super::*;
+
+    #[test]
+    fn parses_bare_array() {
+        let v = parse_intents_output("[{\"title\":\"a\"}]").unwrap();
+        assert!(v.is_array());
+        assert_eq!(v.as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn parses_array_wrapped_in_prose() {
+        // The old first-'['/last-']' slice broke when prose contained a stray '['.
+        let out = "Here are the intents [see below]:\n[{\"title\":\"a\"},{\"title\":\"b\"}]\nDone.";
+        let v = parse_intents_output(out).unwrap();
+        assert_eq!(v.as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn parses_fenced_json() {
+        let out = "```json\n[{\"title\":\"a\"}]\n```";
+        let v = parse_intents_output(out).unwrap();
+        assert_eq!(v.as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn unwraps_intents_object() {
+        let out = "{\"intents\": [{\"title\":\"a\"}]}";
+        let v = parse_intents_output(out).unwrap();
+        assert_eq!(v.as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn empty_array_is_ok() {
+        let v = parse_intents_output("[]").unwrap();
+        assert_eq!(v.as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn genuine_prose_with_no_array_errors() {
+        assert!(parse_intents_output("I cannot help with that.").is_err());
     }
 }
