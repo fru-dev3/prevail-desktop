@@ -21,6 +21,44 @@ pub struct SkillEntry {
     pub name: String,
     pub path: String,
     pub description: Option<String>,
+    // Skills are enabled by default; the user can disable a built-in (or any)
+    // skill from the Skills area. A disabled skill is excluded from /skills and
+    // never auto-attached, but stays on disk so it can be re-enabled. The set of
+    // disabled skills lives in build/_meta/disabled-skills.json.
+    pub enabled: bool,
+}
+
+/// Path to the per-vault disabled-skills set (build/_meta/disabled-skills.json).
+fn disabled_skills_path(vault: &str) -> PathBuf {
+    crate::paths::build_root(vault).join("_meta").join("disabled-skills.json")
+}
+
+/// The set of disabled skill keys ("<domain>/<name>"). Missing/unreadable file
+/// means nothing is disabled (skills are on by default).
+fn read_disabled_skills(vault: &str) -> std::collections::HashSet<String> {
+    match read_to_string_retry(&disabled_skills_path(vault)) {
+        Ok(s) => serde_json::from_str::<Vec<String>>(&s).unwrap_or_default().into_iter().collect(),
+        Err(_) => std::collections::HashSet::new(),
+    }
+}
+
+fn skill_key(domain: &str, name: &str) -> String {
+    format!("{domain}/{name}")
+}
+
+/// Enable or disable a skill (persisted in disabled-skills.json). Enabling
+/// removes it from the disabled set; disabling adds it. Idempotent.
+#[tauri::command]
+pub(crate) fn skill_set_enabled(vault: String, domain: String, name: String, enabled: bool) -> Result<(), String> {
+    let mut set = read_disabled_skills(&vault);
+    let key = skill_key(&domain, &name);
+    if enabled { set.remove(&key); } else { set.insert(key); }
+    let path = disabled_skills_path(&vault);
+    if let Some(parent) = path.parent() { let _ = fs::create_dir_all(parent); }
+    let mut list: Vec<String> = set.into_iter().collect();
+    list.sort();
+    fs::write(&path, serde_json::to_string_pretty(&list).unwrap_or_else(|_| "[]".into()))
+        .map_err(|e| format!("write disabled-skills: {e}"))
 }
 
 // Skip leading YAML frontmatter + heading lines, then return the first
@@ -169,7 +207,15 @@ pub(crate) fn domain_context(vault: String, domain: String) -> Result<DomainCont
     // The file-reading body is shared with `app_context` (apps are domains with a
     // little more), so it lives in `context_for_root`. `domain_label` is used only
     // to tag the domain on each scanned skill, exactly as before.
-    context_for_root(root, extra_base, &domain)
+    let mut ctx = context_for_root(root, extra_base, &domain)?;
+    // Mark disabled skills so the Skills area can render the on/off toggle state.
+    let disabled = read_disabled_skills(&vault);
+    if !disabled.is_empty() {
+        for s in &mut ctx.skills {
+            if disabled.contains(&skill_key(&s.domain, &s.name)) { s.enabled = false; }
+        }
+    }
+    Ok(ctx)
 }
 
 /// Build a DomainContext from a content root: the state/decisions/journal/recent
@@ -316,6 +362,7 @@ fn context_for_root(root: PathBuf, extra_base: Option<PathBuf>, domain_label: &s
                 name,
                 path: p.to_string_lossy().to_string(),
                 description,
+                enabled: true, // domain_context flips disabled ones (it has the vault)
             });
         }
     }
@@ -443,6 +490,7 @@ pub(crate) fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
                     name,
                     path: p.to_string_lossy().to_string(),
                     description,
+                    enabled: true, // flipped from the disabled set below
                 });
             }
         }
@@ -498,11 +546,19 @@ pub(crate) fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
                     name,
                     path: skill_path.to_string_lossy().to_string(),
                     description,
+                    enabled: true,
                 });
             }
         }
     }
 
+    // Mark disabled skills (user turned them off in the Skills area).
+    let disabled = read_disabled_skills(&vault);
+    if !disabled.is_empty() {
+        for s in &mut out {
+            if disabled.contains(&skill_key(&s.domain, &s.name)) { s.enabled = false; }
+        }
+    }
     out.sort_by(|a, b| a.domain.cmp(&b.domain).then(a.name.cmp(&b.name)));
     Ok(out)
 }
