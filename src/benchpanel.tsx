@@ -909,6 +909,10 @@ function RunningBatchCard({
   const log = batch.log;
   // Which job card is expanded to its question-by-question detail (per card).
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
+  // Whole-run collapse: hide the per-model rows so several runs can be stacked
+  // in the monitor without each one taking a full screen. The header + overall
+  // progress stay visible so a collapsed run still shows status at a glance.
+  const [collapsed, setCollapsed] = useState(false);
   const logRef = useRef<HTMLPreElement>(null);
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log]);
 
@@ -929,7 +933,12 @@ function RunningBatchCard({
     <div className="space-y-3 rounded-2xl border border-border bg-surface px-6 py-5 shadow-sm">
       {/* Header: status icon + heading, with a Dismiss control for finished
           batches so a completed card can be cleared without leaving the wizard. */}
-      <div className="flex items-start gap-2.5">
+      <div
+        className="flex items-start gap-2.5 cursor-pointer select-none"
+        onClick={() => setCollapsed((v) => !v)}
+        title={collapsed ? "Expand this run" : "Collapse this run"}
+      >
+        <ChevronRight className={`mt-1 h-4 w-4 shrink-0 text-text-muted transition-transform ${collapsed ? "" : "rotate-90"}`} />
         {running
           ? <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-accent" />
           : cancelled ? <X className="mt-0.5 h-5 w-5 shrink-0 text-text-muted" />
@@ -952,7 +961,7 @@ function RunningBatchCard({
         </div>
         {allDone && (
           <button
-            onClick={onDismiss}
+            onClick={(e) => { e.stopPropagation(); onDismiss(); }}
             title="Dismiss this run from the monitor"
             className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1 font-mono text-[10px] text-text-secondary transition-colors hover:bg-surface-warm"
           >
@@ -991,6 +1000,7 @@ function RunningBatchCard({
           </button>
         </div>
       )}
+      {!collapsed && (
       <div className="space-y-2">
         {jobs.map((j) => {
           const pct = j.total > 0 ? Math.round((j.done / j.total) * 100) : 0;
@@ -1061,6 +1071,7 @@ function RunningBatchCard({
           );
         })}
       </div>
+      )}
       {allDone && (
         <div className="flex items-center justify-center gap-2 pt-1">
           <button onClick={onViewResults} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background hover:bg-accent-hover">
@@ -1426,27 +1437,9 @@ export function BenchRunConfig({
               </div>
             );
           })}
-          {/* Presets moved to its own Arena nav item; a compact shortcut stays
-              here so it's still one click from the wizard. A "New" reset lets the
-              user start the run over from step 1 at any point. */}
-          <div className="ml-1 flex shrink-0 items-center gap-1.5 border-l border-border-subtle pl-2">
-            {(selModels.size > 0 || scope.size > 0 || domainsTouched) && (
-              <button
-                onClick={startOver}
-                title="Start a new run: clear the selection and go back to step 1"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-border-subtle bg-surface px-3 py-2 text-[13px] font-semibold text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
-              >
-                <RotateCw className="h-3.5 w-3.5" /> New
-              </button>
-            )}
-            <button
-              onClick={() => onOpenPresets?.()}
-              title="Open Presets: reusable model bundles"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-border-subtle bg-surface px-3 py-2 text-[13px] font-semibold text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
-            >
-              <Bookmark className="h-3.5 w-3.5" /> Presets
-            </button>
-          </div>
+          {/* New + Presets removed from the stepper: Presets has its own Arena
+              nav item, and Start-over lives on the Review step, so duplicating
+              them here was redundant. */}
         </div>
         {/* Progress bar + plain-language status. */}
         <div className="mt-3">
