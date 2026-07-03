@@ -797,6 +797,11 @@ async fn run_cli_inner(cli: &str, model: Option<&str>, prompt: &str, read_only: 
         .env("PATH", combined_path)
         .env("USER", user)
         .env("LOGNAME", logname)
+        // Mark this as an INTERNAL Prevail model call. The prompt-capture hook
+        // (inherited by the spawned CLI's own hook subprocess) skips ingest when
+        // this is set, so Prevail's own distill/taskgen/skillgen spawns don't
+        // self-record as "what the user asked" in the journal.
+        .env("PREVAIL_INTERNAL", "1")
         .stdin(std::process::Stdio::null())
         .output()
         .await
