@@ -22,6 +22,7 @@ const SettingsPanel = lazy(() => import("./settingspanel").then((m) => ({ defaul
 const WorkPanel = lazy(() => import("./workpanel").then((m) => ({ default: m.WorkPanel })));
 const BenchmarkPanel = lazy(() => import("./benchpanel").then((m) => ({ default: m.BenchmarkPanel })));
 const RetrospectPanel = lazy(() => import("./retrospectpanel").then((m) => ({ default: m.RetrospectPanel })));
+const ToolsPanel = lazy(() => import("./toolspanel").then((m) => ({ default: m.ToolsPanel })));
 import { Sidebar } from "./sidebar";
 import { useAppearance, useFrameworkLens } from "./hooks";
 import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
@@ -1818,6 +1819,15 @@ export default function App() {
                   >
                     <span className="text-[13px] leading-none">↺</span> Retrospect
                   </button>
+                  <button
+                    onClick={() => setTab("tools")}
+                    title="Tools: the governed capability layer your AI acts through"
+                    className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
+                      tab === "tools" ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <span className="text-[12px] leading-none">⛭</span> Tools
+                  </button>
                 </>
               )}
               <DomainActionsMenu
@@ -1940,6 +1950,11 @@ export default function App() {
             {tab === "retrospect" && (
               <div className="h-full">
                 <RetrospectPanel vaultPath={vaultPath} />
+              </div>
+            )}
+            {tab === "tools" && (
+              <div className="h-full">
+                <ToolsPanel />
               </div>
             )}
             </Suspense>
