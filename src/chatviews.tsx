@@ -346,12 +346,16 @@ export function DomainStatusBar({
   domain,
   fwLens,
   surface = "chat",
+  googleInContext = false,
 }: {
   domain: string | null;
   fwLens: ReturnType<typeof useFrameworkLens>;
   // Which surface this bar's Modes control - so Chat and Council share the same
   // Modes menu (incognito included) but toggle their own per-surface flag.
   surface?: "chat" | "council";
+  // The Google account chip only appears once the Google app is actually in the
+  // chat's context (dragged/attached) - keeping the composer clean otherwise.
+  googleInContext?: boolean;
 }) {
   // Hooks must be top-level - initialize state from localStorage once
   // per domain, then keep React state as the source of truth so toggles
@@ -539,9 +543,10 @@ export function DomainStatusBar({
             </div>
           )}
         </div>
-        {/* Top-level Google account chip - always visible when accounts exist, so
-            the active account is obvious and one click to change (not buried). */}
-        {gProfiles.length > 0 && (
+        {/* Top-level Google account chip - ONLY when the Google app is in this
+            chat's context (dragged/attached). Keeps the composer clean until you
+            actually bring Google in; then you pick which account(s) are active. */}
+        {googleInContext && gProfiles.length > 0 && (
           <div ref={gRef} className="relative inline-flex items-center">
             <span className="mx-1 select-none text-text-muted/40">·</span>
             <button
@@ -560,8 +565,8 @@ export function DomainStatusBar({
             </button>
             {gOpen && (
               <div className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-xl border border-border bg-surface p-1.5 shadow-xl">
-                <div className="px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Google account</div>
-                <div className="mb-1 px-2.5 text-[11px] leading-snug text-text-muted">Which account(s) this domain uses for Google. Pick more than one to work across inboxes.</div>
+                <div className="px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Active Google accounts</div>
+                <div className="mb-1 px-2.5 text-[11px] leading-snug text-text-muted">Check the account(s) to keep active in this conversation. Check more than one to work across inboxes at once.</div>
                 <div className="flex flex-col gap-1 p-1">
                   {gProfiles.map((p) => {
                     const on = gSelected.includes(p.label);
@@ -571,17 +576,22 @@ export function DomainStatusBar({
                       <button
                         key={p.label}
                         type="button"
+                        role="checkbox"
+                        aria-checked={on}
                         onClick={() => toggleGAccount(p.label)}
                         title={`${p.label}${p.email ? ` — ${p.email}` : ""}`}
                         className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-left transition-colors ${
                           on ? "border-accent-border bg-accent-soft" : "border-border bg-surface hover:bg-surface-warm"
                         }`}
                       >
+                        {/* Explicit checkbox so multi-select is obvious. */}
+                        <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                          on ? "border-accent bg-accent text-background" : "border-border bg-surface"
+                        }`}>{on && <Check className="h-3 w-3" strokeWidth={3} />}</span>
                         <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
                           on ? "bg-accent text-background" : "bg-surface-warm text-text-secondary"
                         }`}>{initial}</span>
                         <span className="min-w-0 flex-1 truncate text-[12px] text-text-primary">{who}</span>
-                        {on && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
                       </button>
                     );
                   })}
