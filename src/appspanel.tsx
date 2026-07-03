@@ -2947,6 +2947,16 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
     setTab("skills");
     setRunningSkill(primarySkill.id);
   }, [primarySkill]);
+  // Set this app's DEFAULT connection/sync method (mcp | api | oauth | browser |
+  // manual). Persisted per-app via engine_app_set_integration, so each app can
+  // sync a different way. Reloads so the ranked card reflects the new default.
+  const setDefaultMethod = useCallback(async (method: string) => {
+    try {
+      await invoke("engine_app_set_integration", { id: app.id, integration: method });
+      window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
+      void onReload();
+    } catch (e) { console.error("set default method", e); }
+  }, [app.id, onReload]);
   // Per-app soul: the same construct domains use (soul.md) — a markdown note
   // declaring WHY this app is in the harness, persisted to vault/data/apps/<id>/soul.md and
   // read by the agent as standing context. Editable inline; saved to the file.
@@ -3341,7 +3351,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
             // App/domain parity: a connected app keeps a journal + state + decisions
             // just like a domain. Catalog (not-yet-added) apps have no data dir, so
             // the tab only appears once the app exists in the vault.
-            ...(!notConnected ? [{ id: "journal" as const, label: "Journal", icon: Activity }] : []),
+            ...(!notConnected ? [{ id: "journal" as const, label: "Context", icon: Activity }] : []),
             { id: "skills", label: "Skills", icon: Boxes },
             { id: "connections", label: "Connections", icon: Link2 },
             // Operational facets (ported from AppFacetPanel). Only meaningful once
@@ -3596,22 +3606,30 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
                   {notConnected && connect && <button onClick={connect.onConnect} disabled={connect.connecting} className="shrink-0 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50">Set up</button>}
                 </div>
               ) : null; })()}
-              <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3.5 py-2.5">
+              {(() => { const isDefault = methodOf(app) === "browser"; return (
+              <div className={`flex items-center gap-3 rounded-xl border px-3.5 py-2.5 ${isDefault ? "border-accent-border bg-accent-soft/20" : "border-border bg-surface"}`}>
                 <span className="h-2 w-2 shrink-0 rounded-full bg-text-muted" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-semibold text-text-primary">Browser automation</div>
+                  <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">Browser automation {isDefault && <span className="rounded border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-accent">default</span>}</div>
                   <div className="font-mono text-[10.5px] text-text-muted">open a browser, log in once, Prevail learns the steps</div>
                 </div>
-                <button onClick={() => setLearnMode("learn")} disabled={!!learnMode} className="shrink-0 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">Set up</button>
+                {!isDefault && <button onClick={() => setDefaultMethod("browser")} className="shrink-0 rounded-md border border-border px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">Make default</button>}
+                {/* Set up launches the browser-learn flow. It renders in the
+                    Skills tab, so navigate there and open the compose step. */}
+                <button onClick={() => { setTab("skills"); setGoalText(""); setComposing(true); }} disabled={!!learnMode} className="shrink-0 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">Set up</button>
               </div>
-              <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3.5 py-2.5">
+              ); })()}
+              {(() => { const isDefault = methodOf(app) === "api"; return (
+              <div className={`flex items-center gap-3 rounded-xl border px-3.5 py-2.5 ${isDefault ? "border-accent-border bg-accent-soft/20" : "border-border bg-surface"}`}>
                 <span className="h-2 w-2 shrink-0 rounded-full bg-text-muted" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-semibold text-text-primary">API key</div>
+                  <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">API key {isDefault && <span className="rounded border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-accent">default</span>}</div>
                   <div className="font-mono text-[10.5px] text-text-muted">paste a token for direct access</div>
                 </div>
+                {!isDefault && <button onClick={() => setDefaultMethod("api")} className="shrink-0 rounded-md border border-border px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">Make default</button>}
                 <button onClick={() => setTab("settings")} title="Set the connection method + credentials in Settings" className="shrink-0 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">Add key</button>
               </div>
+              ); })()}
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

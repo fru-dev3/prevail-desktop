@@ -43,6 +43,10 @@ export interface DomainContextBundle {
   journal: string | null;
   recent_logs: DomainLogEntry[];
   skills: { domain: string; name: string; path: string; description: string | null; enabled?: boolean }[];
+  // True when this domain is on the clean v4 layout, so the UI shows the real
+  // on-disk paths (memory/state.md, .system/journal.jsonl) not the legacy flat
+  // names (_state.md, _intents.jsonl).
+  layoutV4?: boolean;
 }
 
 export interface ScoreDimension {

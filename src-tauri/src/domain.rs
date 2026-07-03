@@ -125,6 +125,11 @@ pub struct DomainContext {
     pub journal: Option<String>,
     pub recent_logs: Vec<DomainLogEntry>,
     pub skills: Vec<SkillEntry>,
+    // True when this domain is on the clean v4 layout (source/·memory/·.system/),
+    // so the UI shows the real on-disk paths (memory/state.md, .system/journal.jsonl)
+    // instead of the legacy flat names.
+    #[serde(rename = "layoutV4")]
+    pub layout_v4: bool,
 }
 
 /// Read a domain's starter prompts from `<vault>/<domain>/PROMPTS.md` (written
@@ -374,7 +379,8 @@ fn context_for_root(root: PathBuf, extra_base: Option<PathBuf>, domain_label: &s
     }
     skills.sort_by(|a, b| a.name.cmp(&b.name));
 
-    Ok(DomainContext { state, decisions, journal, recent_logs, skills })
+    let layout_v4 = crate::paths::is_v4_domain(&root);
+    Ok(DomainContext { state, decisions, journal, recent_logs, skills, layout_v4 })
 }
 
 /// App/domain parity: an app is a domain with a little more, so it owns the same
@@ -397,6 +403,7 @@ pub(crate) fn app_context(vault: String, app_id: String) -> Result<DomainContext
         journal: None,
         recent_logs: Vec::new(),
         skills: Vec::new(),
+        layout_v4: false,
     };
     if !safe {
         return Ok(empty);
