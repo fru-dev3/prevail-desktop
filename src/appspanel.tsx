@@ -2920,7 +2920,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
   const [tab, setTab] = useState<AppTab>("welcome");
   const [skills, setSkills] = useState<AppSkill[]>([]);
   const loadSkills = useCallback(() => {
-    invoke<AppSkill[]>("engine_app_skills", { id: app.id })
+    invoke<AppSkill[]>("engine_app_skills", { id: app.id, vault: vaultPath })
       .then((s) => setSkills(Array.isArray(s) ? s : []))
       .catch(() => setSkills([]));
   }, [app.id]);

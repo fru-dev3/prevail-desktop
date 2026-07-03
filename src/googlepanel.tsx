@@ -182,7 +182,7 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
   // Skills (shared engine command for app id "google").
   const [skills, setSkills] = useState<AppSkill[]>([]);
   const loadSkills = useCallback(() => {
-    invoke<AppSkill[]>("engine_app_skills", { id: GOOGLE_APP_ID })
+    invoke<AppSkill[]>("engine_app_skills", { id: GOOGLE_APP_ID, vault: vaultPath })
       .then((s) => setSkills(Array.isArray(s) ? s : []))
       .catch(() => setSkills([]));
   }, []);
