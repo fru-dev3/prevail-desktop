@@ -44,6 +44,7 @@ mod broker;
 mod loops;
 mod activity;
 mod ingestion;
+mod runtime_connectors;
 mod composio;
 mod nango;
 mod reminders;
@@ -544,6 +545,7 @@ pub fn run() {
             engine::engine_app_browser_login,
             google::google_cli_status,
             google::google_profiles,
+            runtime_connectors::discover_runtime_connectors,
             google::google_profile_login,
             google::google_profile_remove,
             google::google_scaffold,

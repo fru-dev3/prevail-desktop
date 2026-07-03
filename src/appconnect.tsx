@@ -85,6 +85,17 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel, presetName, preset
   // the app's actual logo (resolved by AppRowLogo) rather than nothing.
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
   useEffect(() => { void invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {}); }, []);
+  // Pass-through discovery: the connectors you've ALREADY authorized in Claude
+  // Code. Surfacing them here (with their real logos) is the "don't reinvent the
+  // wheel" step — you shouldn't have to reconnect an app Prevail can already see.
+  interface RuntimeConn { runtime: string; id: string; name: string; endpoint: string; status: string; connected: boolean; source: string }
+  const [runtimeConns, setRuntimeConns] = useState<RuntimeConn[]>([]);
+  useEffect(() => {
+    void invoke<RuntimeConn[]>("discover_runtime_connectors", { runtime: "claude" })
+      .then((r) => setRuntimeConns(Array.isArray(r) ? r : []))
+      .catch(() => {});
+  }, []);
+  const claudeConnected = useMemo(() => runtimeConns.filter((c) => c.connected), [runtimeConns]);
   const match = useMemo(() => {
     const q = name.trim().toLowerCase();
     if (q.length < 2) return null;
@@ -220,6 +231,26 @@ export function ConnectAppFlow({ vaultPath, onDone, onCancel, presetName, preset
         </div>
         <button onClick={onCancel} className="rounded p-1 text-text-muted hover:text-text-primary" title="Cancel"><X className="h-4 w-4" /></button>
       </div>
+
+      {claudeConnected.length > 0 && (
+        <div className="mb-3 rounded-lg border border-border-subtle bg-background/40 p-3">
+          <div className="mb-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+            <Sparkles className="h-3 w-3 text-accent" /> Already connected in Claude Code
+          </div>
+          <div className="mb-2 text-[11px] leading-snug text-text-muted">
+            You authorized these in Claude Code, so Prevail can see them. No need to reconnect them here.
+          </div>
+          <div className="flex max-h-56 flex-col gap-1 overflow-y-auto">
+            {claudeConnected.map((c) => (
+              <div key={`${c.source}-${c.id}`} className="flex items-center gap-2.5 rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5">
+                <AppRowLogo app={{ title: c.name, id: c.id }} logos={logos} size={22} fallback="letter" />
+                <span className="min-w-0 flex-1 truncate text-[13px] text-text-primary">{c.name}</span>
+                <span className="shrink-0 rounded-full border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-accent">via Claude Code</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!result && (
         <div className="space-y-2">
