@@ -492,13 +492,72 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
     <button onClick={() => setAddOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"><Plus className="h-3.5 w-3.5" /> add app</button>
   );
 
+  // Learned/AI suggestions block. Rendered in BOTH the empty and populated
+  // states - an empty domain is exactly when you most want "which apps should
+  // feed this?", so it must not be hidden behind having an app already.
+  const suggestBlock = (
+      <div className="mt-4 rounded-lg border border-border-subtle bg-surface/60 p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+            <Sparkles className="h-3 w-3 text-accent" /> Suggested for {titleCase(domain)}
+          </span>
+          <button
+            onClick={generateSuggestions}
+            disabled={suggesting}
+            className="inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
+          >
+            {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+            {suggesting ? "thinking" : suggestions.length ? "refresh" : "suggest apps"}
+          </button>
+        </div>
+        {suggestions.length === 0 ? (
+          <div className="px-1 py-2 text-[12px] text-text-muted">
+            {suggesting ? "Learning from your activity in this domain…" : "No suggestions yet. They appear automatically as Prevail learns from your activity here, or hit refresh."}
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {suggestions.map((s) => {
+              const adding = addingSuggestion === s.name;
+              return (
+              <div key={s.name} className="flex items-center gap-3 rounded-md px-1 py-1.5">
+                <BrandTile name={s.name} logos={logos} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-text-primary">{s.name}</div>
+                  <div className="truncate text-[11px] text-text-muted">{s.reason}</div>
+                </div>
+                {/* Two separate steps: add to this domain now (no setup), then
+                    set up the connection later from the app's config page. */}
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+                  title={`Set up the ${s.name} connection in the Apps catalog`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent"
+                >
+                  <SettingsIcon className="h-3 w-3" /> set up
+                </button>
+                <button
+                  onClick={() => addSuggestionToDomain(s.name)}
+                  disabled={adding}
+                  title={`Add ${s.name} to ${titleCase(domain)} now (you can set up the connection later)`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
+                >
+                  {adding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} {adding ? "adding…" : "add to domain"}
+                </button>
+              </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+  );
+
   if (!apps) return <div className="text-sm text-text-muted">loading…</div>;
   if (domainApps.length === 0) {
     return (
       <div className="space-y-3">
         <div className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
-          No apps are refreshing this domain yet. Add one below, or from Settings → Apps.
+          No apps are refreshing this domain yet. Connect one of the suggestions below, add your own, or set one up from Settings → Apps.
         </div>
+        {suggestBlock}
         {addPicker}
       </div>
     );
@@ -562,60 +621,7 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
           </div>
         );
       })}
-      {/* Learned suggestions: real apps to connect, inferred from what you do in
-          this domain. Refreshed on demand here and by the daily daemon. */}
-      <div className="mt-4 rounded-lg border border-border-subtle bg-surface/60 p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-            <Sparkles className="h-3 w-3 text-accent" /> Suggested for {titleCase(domain)}
-          </span>
-          <button
-            onClick={generateSuggestions}
-            disabled={suggesting}
-            className="inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50"
-          >
-            {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-            {suggesting ? "thinking" : suggestions.length ? "refresh" : "suggest apps"}
-          </button>
-        </div>
-        {suggestions.length === 0 ? (
-          <div className="px-1 py-2 text-[12px] text-text-muted">
-            {suggesting ? "Learning from your activity in this domain…" : "No suggestions yet. They appear automatically as Prevail learns from your activity here, or hit refresh."}
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {suggestions.map((s) => {
-              const adding = addingSuggestion === s.name;
-              return (
-              <div key={s.name} className="flex items-center gap-3 rounded-md px-1 py-1.5">
-                <BrandTile name={s.name} logos={logos} />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-text-primary">{s.name}</div>
-                  <div className="truncate text-[11px] text-text-muted">{s.reason}</div>
-                </div>
-                {/* Two separate steps: add to this domain now (no setup), then
-                    set up the connection later from the app's config page. */}
-                <button
-                  onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
-                  title={`Set up the ${s.name} connection in the Apps catalog`}
-                  className="inline-flex shrink-0 items-center gap-1 rounded border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent"
-                >
-                  <SettingsIcon className="h-3 w-3" /> set up
-                </button>
-                <button
-                  onClick={() => addSuggestionToDomain(s.name)}
-                  disabled={adding}
-                  title={`Add ${s.name} to ${titleCase(domain)} now (you can set up the connection later)`}
-                  className="inline-flex shrink-0 items-center gap-1 rounded border border-accent-border bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50"
-                >
-                  {adding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} {adding ? "adding…" : "add to domain"}
-                </button>
-              </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {suggestBlock}
       <div className="pt-1">{addPicker}</div>
     </div>
   );
