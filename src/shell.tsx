@@ -481,10 +481,14 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
   //   3. Incognito- shown only when the global master is on (no logging/memory).
   // High-contrast in BOTH modes: a tinted bar (not a translucent wash that
   // disappears over warm/cream themes), dark text on cyan, light text on dark.
-  const Seg = ({ Icon, label, on, tip }: { Icon: typeof Cloud; label: string; on: boolean; tip: string }) => (
+  const Seg = ({ Icon, label, on, tip, onClick }: { Icon: typeof Cloud; label: string; on: boolean; tip: string; onClick?: () => void }) => (
     <span
-      className={`inline-flex cursor-default select-none items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] ${on ? "opacity-100" : "opacity-55"}`}
-      title={tip}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+      className={`inline-flex select-none items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] ${onClick ? "cursor-pointer underline-offset-2 hover:underline" : "cursor-default"} ${on ? "opacity-100" : "opacity-55"}`}
+      title={onClick ? `${tip} (click to change)` : tip}
     >
       <Icon className="h-3.5 w-3.5" />
       {label}
@@ -538,6 +542,7 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
         Icon={machineRole === "hub" ? Server : Laptop}
         label={machineRole === "hub" ? "Hub" : "Client"}
         on
+        onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "daemons" }))}
         tip={machineRole === "hub"
           ? "Hub: this Mac runs all background automation for the vault (learn, loops, connector sync, schedule ticks)."
           : "Client: this Mac captures prompts only. Background automation for the shared vault runs on the hub."}
