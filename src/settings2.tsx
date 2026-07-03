@@ -532,7 +532,14 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
     setDistillMsg(null);
     try {
       const provider = getPref(PREF.memoryProvider, "claude");
-      const model = getPref(PREF.distillModel, "claude-haiku-4-5");
+      // Don't hand a claude-specific model id to a non-claude CLI (that made the
+      // distiller emit an error line with no JSON array). Use the default only
+      // for claude; for other providers, pass a stored model only if it isn't a
+      // claude id, else let the engine pick that provider's default.
+      const storedModel = getPref(PREF.distillModel, "");
+      const model = provider === "claude"
+        ? (storedModel || "claude-haiku-4-5")
+        : (storedModel && !storedModel.startsWith("claude") ? storedModel : "");
       const doc = await invoke<DistilledDoc>("intents_distill", { cfg: { vault: vaultPath, provider, model, limit: 200 } });
       setDistilled(doc);
       setDistillMsg(`Distilled ${doc.intents?.length ?? 0} intent${(doc.intents?.length ?? 0) === 1 ? "" : "s"} from ${doc.source_count} prompts.`);
