@@ -1509,79 +1509,46 @@ export default function App() {
     />
   );
 
-  // Editor mode — configuration. Renders inside the shared shell (sidebar stays
-  // put) so the Work/Editor toggle is always visible; no "Back to app" button.
-  if (tab === "settings") {
-    return (
-      <div className="relative flex h-screen flex-col bg-background text-text-primary">
-        <div className="flex min-h-0 flex-1">
-          {sidebarEl}
-          <Suspense fallback={<PanelLoading />}>
-          <SettingsPanel
-            appearance={appearance}
-            vaultPath={vaultPath}
-            clis={clis}
-            onRefreshClis={refreshClis}
-            bunkerEnabled={bunkerEnabled}
-            onBunkerChange={applyBunker}
-            onSetupDomains={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
-            onVaultMoved={(p) => {
-              setVaultPath(p);
-              lsSet(LS.vault, p);
-              void invoke("remember_vault", { path: p }).catch(() => {});
-              setSelectedDomain(null);
-              // Force every panel that listens for domain changes (sidebar, stats,
-              // threads, …) to re-scan the NEW vault instead of showing stale data.
-              window.dispatchEvent(new Event("prevail:domains-changed"));
-            }}
-            jumpTo={settingsJump}
-            onStartChatWith={(cliId, modelId) => {
-              lsSet(LS.defaultChatCli, cliId);
-              if (modelId) lsSet(`prevail.model.${cliId}`, modelId);
-              setSelectedDomain("");
-              setTab("chat");
-            }}
-          />
-          </Suspense>
-        </div>
-        <BunkerRibbon enabled={bunkerEnabled} />
-        <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
-        <BridgeStatusChips />
-        {quickCaptureOn && <QuickCapture vaultPath={vaultPath} />}
-        {cmdPaletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setCmdPaletteOpen(false)} />}
-        {/* Mounted in every tab return (the three are mutually exclusive) so the
-            About page's "Take the tour" button - which lives in the Settings tab -
-            has a live listener for its replay event. It previously only mounted
-            in the main tab, so the button fired into the void. */}
-        <OnboardingTour />
-      </div>
-    );
-  }
-
-  // Work mode — the operational hub (board / automations / calendar / notes).
-  // Same shared shell as Editor; the sidebar toggle moves between the two.
-  if (tab === "work") {
-    return (
-      <div className="relative flex h-screen flex-col bg-background text-text-primary">
-        <div className="flex min-h-0 flex-1">
-          {sidebarEl}
-          <Suspense fallback={<PanelLoading />}>
-            <WorkPanel vaultPath={vaultPath} clis={clis} jumpTo={workJump} />
-          </Suspense>
-        </div>
-        <BunkerRibbon enabled={bunkerEnabled} />
-        <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
-        <BridgeStatusChips />
-        {quickCaptureOn && <QuickCapture vaultPath={vaultPath} />}
-        {cmdPaletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setCmdPaletteOpen(false)} />}
-        {/* Mounted in every tab return (the three are mutually exclusive) so the
-            About page's "Take the tour" button - which lives in the Settings tab -
-            has a live listener for its replay event. It previously only mounted
-            in the main tab, so the button fired into the void. */}
-        <OnboardingTour />
-      </div>
-    );
-  }
+  // PERF: one persistent shell for ALL modes. Editor (settings) and Work used to
+  // be separate early-return trees, so every Work<->Editor<->Chat switch
+  // unmounted and remounted the whole app (sidebar's ~18 effects, threads, apps,
+  // the lazy panels) - the cause of the "mode switch feels slow" report. Now the
+  // shell + sidebar stay mounted and only the CENTER region swaps by tab.
+  const isMainMode = tab !== "settings" && tab !== "work";
+  const editorCenter = (
+    <Suspense fallback={<PanelLoading />}>
+      <SettingsPanel
+        appearance={appearance}
+        vaultPath={vaultPath}
+        clis={clis}
+        onRefreshClis={refreshClis}
+        bunkerEnabled={bunkerEnabled}
+        onBunkerChange={applyBunker}
+        onSetupDomains={() => { setOnboardDismissed(false); setOnboardOpen(true); }}
+        onVaultMoved={(p) => {
+          setVaultPath(p);
+          lsSet(LS.vault, p);
+          void invoke("remember_vault", { path: p }).catch(() => {});
+          setSelectedDomain(null);
+          // Force every panel that listens for domain changes (sidebar, stats,
+          // threads, …) to re-scan the NEW vault instead of showing stale data.
+          window.dispatchEvent(new Event("prevail:domains-changed"));
+        }}
+        jumpTo={settingsJump}
+        onStartChatWith={(cliId, modelId) => {
+          lsSet(LS.defaultChatCli, cliId);
+          if (modelId) lsSet(`prevail.model.${cliId}`, modelId);
+          setSelectedDomain("");
+          setTab("chat");
+        }}
+      />
+    </Suspense>
+  );
+  const workCenter = (
+    <Suspense fallback={<PanelLoading />}>
+      <WorkPanel vaultPath={vaultPath} clis={clis} jumpTo={workJump} />
+    </Suspense>
+  );
 
   return (
     <div className="relative flex h-screen flex-col bg-background text-text-primary">
@@ -1623,6 +1590,8 @@ export default function App() {
       )}
       <div className="flex min-h-0 flex-1">
         {sidebarEl}
+        {/* Center region swaps by mode; the sidebar above stays mounted. */}
+        {!isMainMode ? (tab === "settings" ? editorCenter : workCenter) : (<>
         {!sidebarCollapsed && (
           <ResizeHandle
             ariaLabel="Resize domain rail"
@@ -1950,6 +1919,7 @@ export default function App() {
             </Suspense>
           </div>
         </main>
+        </>)}
       </div>
       <BunkerRibbon enabled={bunkerEnabled} />
       <DemoRibbon onSwitch={() => openSettingsAt("demo")} />
