@@ -174,6 +174,14 @@ export function ChatBubble({
           }`}
           style={bubbleStyle}
         >
+          {msg.toolLog && msg.toolLog.length > 0 && (
+            <div className="mb-2.5 flex flex-col gap-0.5 rounded-lg border border-border-subtle bg-background/40 px-3 py-2">
+              <div className="mb-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-text-muted">Tools used · verified</div>
+              {msg.toolLog.map((t, i) => (
+                <div key={i} className="font-mono text-[11px] leading-relaxed text-text-secondary">{t}</div>
+              ))}
+            </div>
+          )}
           {msg.content ? (
             msg.role === "assistant" ? (() => {
               const showThinking = getPref(PREF.showThinking, "1") === "1";
