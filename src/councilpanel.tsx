@@ -336,7 +336,8 @@ export function CouncilPanel({
   useEffect(() => {
     if (!_vaultPath) { setMentionDomains([]); setAllSkills([]); return; }
     invoke<Domain[]>("scan_vault", { path: _vaultPath }).then(setMentionDomains).catch(() => setMentionDomains([]));
-    invoke<SkillEntry[]>("scan_skills", { vault: _vaultPath }).then(setAllSkills).catch(() => setAllSkills([]));
+    // Only ENABLED skills feed /skills + auto-attach; disabled ones are hidden.
+    invoke<SkillEntry[]>("scan_skills", { vault: _vaultPath }).then((s) => setAllSkills(s.filter((x) => x.enabled !== false))).catch(() => setAllSkills([]));
   }, [_vaultPath]);
   useEffect(() => {
     if (!_vaultPath) { setAppsCache([]); return; }
