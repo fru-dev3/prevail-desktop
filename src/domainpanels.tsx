@@ -288,6 +288,10 @@ export function DomainContextDrawer({
     </div>
   );
 
+  // Show the REAL on-disk filename: the v4 path on a migrated domain, else the
+  // legacy flat name. Keeps the UI label matched to the filesystem exactly.
+  const vf = (v4: string, legacy: string) => (ctx?.layoutV4 ? v4 : legacy);
+
   return (
     <div className="flex shrink-0">
       <ResizeHandle
@@ -404,21 +408,21 @@ export function DomainContextDrawer({
           {(() => { const I = domain ? domainIcon(domain) : MessageSquare; return I ? <I className="h-3.5 w-3.5 text-accent" /> : <span className="text-accent">◆</span>; })()}
           {domain ? titleCase(domain) : "General"}
         </div>
-        <Section keyName="memory" title="Memory" file="_memory.md" action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="memory" />} body={
+        <Section keyName="memory" title="Memory" file={vf("memory/memory.md", "_memory.md")} action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="memory" />} body={
           memory.trim()
             ? <CtxRow desc="Distilled long-term memory." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} memory`, memory)} onUse={() => onInjectContext(memory, `${domain ? titleCase(domain) : "General"} · memory`)} />
             : <div className="text-[11px] text-text-muted">Empty until distilled. Rebuild with ↻ above.</div>
         } />
         {ctx && (
           <>
-            <Section keyName="state" title="State" file="_state.md" action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="state" />} body={
+            <Section keyName="state" title="State" file={vf("memory/state.md", "_state.md")} action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="state" />} body={
               ctx.state
                 ? <CtxRow desc="Snapshot of where things stand now." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} state`, ctx.state!)} onUse={() => onInjectContext(ctx.state!, `${domain ? titleCase(domain) : "General"} · state`)} />
                 : <div className="text-[11px] text-text-muted">Empty until distilled. Rebuild with ↻ above.</div>
             } />
             {/* Decisions = the live ledger (latest, raw) + the distiller's curated
                 summary, in ONE section (was split into "Recent decisions" + "Decisions"). */}
-            <Section keyName="decisions" title="Decisions" file="_decisions.jsonl" count={decisions.length || undefined} body={
+            <Section keyName="decisions" title="Decisions" file={vf("memory/decisions.jsonl", "_decisions.jsonl")} count={decisions.length || undefined} body={
               <>
               <div className="mb-2 text-[11px] leading-snug text-text-muted">
                 Council verdicts and saved decisions, latest first.
@@ -456,7 +460,7 @@ export function DomainContextDrawer({
                 it. Per founder's model: journal = raw prompts; intent = distilled.
                 (The on-disk file is _intents.jsonl today; a forced rename to a
                 journal-named file is the pending vault-layout migration.) */}
-            <Section keyName="activity" title="Journal" file="_intents.jsonl" count={ctx.recent_logs.length || undefined} body={
+            <Section keyName="activity" title="Journal" file={vf(".system/journal.jsonl", "_intents.jsonl")} count={ctx.recent_logs.length || undefined} body={
               <>
               {ctx.journal && (
                 <div className="mb-2">
@@ -482,7 +486,7 @@ export function DomainContextDrawer({
               ) : (!ctx.journal && <div className="text-[11px] text-text-muted">Empty. Your chats here build this record.</div>)}
               </>
             } />
-            <Section keyName="skills" title="Skills" file="_skills/" count={ctx.skills.length} body={
+            <Section keyName="skills" title="Skills" file={vf("memory/skills/", "_skills/")} count={ctx.skills.length} body={
               ctx.skills.length === 0 ? (
                 <div className="text-xs text-text-muted">drop a folder under <code className="text-accent">{titleCase(domain)}/_skills/</code> with a SKILL.md.</div>
               ) : (
