@@ -2075,6 +2075,50 @@ pub async fn headless_learn_set(vault: String, enabled: bool) -> Result<String, 
     if out.status.success() { Ok(txt.trim().to_string()) } else { Err(txt.trim().to_string()) }
 }
 
+/// Read this machine's role (hub | client) by driving the engine's `prevail
+/// role`. Per-machine state (lives in ~/.prevail/config.json), NOT in the vault.
+/// Defaults to "hub" when the engine can't be reached, matching the CLI default.
+#[tauri::command]
+pub async fn machine_role_get() -> Result<String, String> {
+    let bin = resolve_prevail_bin();
+    let (combined_path, user, logname) = crate::build_cli_env();
+    let mut cmd = tokio::process::Command::new(&bin);
+    cmd.args(["role"])
+        .env_clear()
+        .envs(crate::scrubbed_env_pairs())
+        .env("PATH", combined_path)
+        .env("USER", user)
+        .env("LOGNAME", logname);
+    let out = cmd.output().await.map_err(|e| format!("spawn {bin} failed: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    let role = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    // Guard against unexpected output: only ever return one of the two roles.
+    Ok(if role == "client" { "client".into() } else { "hub".into() })
+}
+
+/// Set this machine's role by driving `prevail role set hub|client`. Returns the
+/// engine's summary line. Rejects any value that is not one of the two roles.
+#[tauri::command]
+pub async fn machine_role_set(role: String) -> Result<String, String> {
+    if role != "hub" && role != "client" {
+        return Err("role must be 'hub' or 'client'".into());
+    }
+    let bin = resolve_prevail_bin();
+    let (combined_path, user, logname) = crate::build_cli_env();
+    let mut cmd = tokio::process::Command::new(&bin);
+    cmd.args(["role", "set", &role])
+        .env_clear()
+        .envs(crate::scrubbed_env_pairs())
+        .env("PATH", combined_path)
+        .env("USER", user)
+        .env("LOGNAME", logname);
+    let out = cmd.output().await.map_err(|e| format!("spawn {bin} failed: {e}"))?;
+    let txt = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    if out.status.success() { Ok(txt.trim().to_string()) } else { Err(txt.trim().to_string()) }
+}
+
 /// Is this vault encrypted, and is the session currently unlocked?
 #[tauri::command]
 pub fn engine_vault_status(vault: String) -> Result<serde_json::Value, String> {
