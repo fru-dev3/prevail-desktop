@@ -17,9 +17,28 @@ fn now_secs() -> i64 {
 }
 
 fn log_path(vault: &str) -> PathBuf {
-    // Lives at the vault root for now; once B2-12 (build/ layout) merges this moves
-    // to crate::paths::build_root(vault).join("_gateway.log").
-    PathBuf::from(vault).join("_gateway.log")
+    // Under the vault's build/_meta bucket (the canonical runtime location),
+    // NEVER at the vault root: the root holds only build/ + data/.
+    crate::paths::build_root(vault).join("_meta").join("_gateway.log")
+}
+
+// Older builds wrote the log to <vault>/_gateway.log at the root. Move any such
+// stray file into build/_meta so the vault root stays clean (build/ + data/ only).
+// Best-effort and idempotent: a no-op once the log lives in the new location.
+fn migrate_legacy(vault: &str) {
+    let old = PathBuf::from(vault).join("_gateway.log");
+    if !old.exists() {
+        return;
+    }
+    let new = log_path(vault);
+    if let Some(p) = new.parent() {
+        let _ = std::fs::create_dir_all(p);
+    }
+    if new.exists() {
+        let _ = std::fs::remove_file(&old); // new location already has it
+    } else {
+        let _ = std::fs::rename(&old, &new);
+    }
 }
 
 /// Append one timestamped event line, trimming to the last MAX_LINES. Best-effort:
@@ -28,6 +47,7 @@ pub(crate) fn append(vault: &str, line: &str) {
     if vault.is_empty() {
         return;
     }
+    migrate_legacy(vault);
     let path = log_path(vault);
     let (y, mo, d, h, mi, s) = crate::secs_to_ymdhms(now_secs());
     let stamped = format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{s:02}  {line}");
@@ -48,6 +68,7 @@ pub(crate) fn append(vault: &str, line: &str) {
 /// Read recent gateway log lines, newest first, capped at `limit`.
 #[tauri::command]
 pub(crate) fn gateway_log_read(vault: String, limit: Option<usize>) -> Result<Vec<String>, String> {
+    migrate_legacy(&vault);
     let path = log_path(&vault);
     let mut lines: Vec<String> = std::fs::read_to_string(&path)
         .map(|t| t.lines().filter(|l| !l.trim().is_empty()).map(String::from).collect())
@@ -62,9 +83,14 @@ pub(crate) fn gateway_log_read(vault: String, limit: Option<usize>) -> Result<Ve
 /// Clear the gateway log.
 #[tauri::command]
 pub(crate) fn gateway_log_clear(vault: String) -> Result<(), String> {
+    // Remove both the canonical log and any stray legacy root-level file.
     let path = log_path(&vault);
     if path.exists() {
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    let legacy = PathBuf::from(&vault).join("_gateway.log");
+    if legacy.exists() {
+        let _ = std::fs::remove_file(&legacy);
     }
     Ok(())
 }
