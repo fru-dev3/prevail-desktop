@@ -348,7 +348,7 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
       .catch(() => {});
   };
   useEffect(() => {
-    invoke<EngineApp[]>("engine_apps_list").then(setApps).catch(() => setApps([]));
+    invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath }).then(setApps).catch(() => setApps([]));
     invoke<Record<string, BrandLogo>>("ingestion_connector_logos").then(setLogos).catch(() => {});
     invoke<ConnectorCatalog>("ingestion_connector_catalog").then((c) => setCatalog(c?.apps ?? [])).catch(() => {});
     loadSuggestions();
@@ -409,13 +409,13 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
       }
       if (match?.soul) { try { await invoke("engine_app_set_soul", { id, soul: match.soul }); } catch { /* best-effort */ } }
       // If the app already existed under this id without this domain, bind it.
-      const list = await invoke<EngineApp[]>("engine_apps_list").catch(() => apps ?? []);
+      const list = await invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath }).catch(() => apps ?? []);
       const added = list.find((a) => a.id === id);
       if (added && !added.domains.includes(domain)) {
-        try { await invoke("engine_app_set_domains", { id, domains: [...added.domains, domain] }); } catch { /* leave as-is */ }
+        try { await invoke("engine_app_set_domains", { id, domains: [...added.domains, domain], vault: vaultPath }); } catch { /* leave as-is */ }
       }
       window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
-      const next = await invoke<EngineApp[]>("engine_apps_list").catch(() => list);
+      const next = await invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath }).catch(() => list);
       setApps(next);
       // Drop it from the suggestion list now that it's feeding the domain.
       setSuggestions((s) => s.filter((x) => x.name.toLowerCase() !== name.toLowerCase()));
@@ -431,7 +431,7 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
     try {
       const r = await invoke<{ ok: boolean; artifacts?: number; error?: string }>("engine_app_sync", { id, vault: vaultPath });
       setProbeResult((m) => ({ ...m, [id]: r.ok ? `synced. ${r.artifacts ?? 0} artifact(s)` : `failed: ${r.error}` }));
-      invoke<EngineApp[]>("engine_apps_list").then(setApps).catch(() => {});
+      invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath }).then(setApps).catch(() => {});
     } catch (e) { setProbeResult((m) => ({ ...m, [id]: `error: ${e}` })); }
     setProbing(null);
   }
@@ -441,10 +441,10 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
   async function bindApp(app: EngineApp) {
     setBinding(app.id);
     try {
-      const r = await invoke<{ ok: boolean; domains?: string[]; error?: string }>("engine_app_set_domains", { id: app.id, domains: [...app.domains, domain] });
+      const r = await invoke<{ ok: boolean; domains?: string[]; error?: string }>("engine_app_set_domains", { id: app.id, domains: [...app.domains, domain], vault: vaultPath });
       if (r.ok) {
         window.dispatchEvent(new CustomEvent("prevail:apps-changed"));
-        const next = await invoke<EngineApp[]>("engine_apps_list").catch(() => apps ?? []);
+        const next = await invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath }).catch(() => apps ?? []);
         setApps(next);
         setAddValue("");
       }

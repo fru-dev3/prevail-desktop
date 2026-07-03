@@ -1144,9 +1144,17 @@ pub fn engine_gateway_app_add(
 /// the engine normalizes/validates/dedups and writes only the manifest's
 /// `domains` array. Returns { ok, path?, domains?, error? }.
 #[tauri::command]
-pub fn engine_app_set_domains(id: String, domains: Vec<String>) -> Result<serde_json::Value, String> {
+pub fn engine_app_set_domains(id: String, domains: Vec<String>, vault: Option<String>) -> Result<serde_json::Value, String> {
     let doms = domains.join(",");
-    run_engine_json(&["connectors", "set", &id, "domains", &doms, "--json"])
+    // Bind on the SAME vault the UI added the app to, so the domain link persists
+    // where the app actually lives (otherwise the binding lands in the ambient
+    // vault and the app "disappears" from the domain on reload). --vault is
+    // optional so existing callers that rely on the ambient vault are unchanged.
+    let vault = vault.filter(|v| !v.trim().is_empty());
+    match &vault {
+        Some(v) => run_engine_json(&["connectors", "set", &id, "domains", &doms, "--vault", v, "--json"]),
+        None => run_engine_json(&["connectors", "set", &id, "domains", &doms, "--json"]),
+    }
 }
 
 /// A2: change how a connected app connects (api | oauth | browser | mcp | manual).
@@ -1208,7 +1216,7 @@ pub fn engine_app_set_soul(id: String, soul: String) -> Result<serde_json::Value
 /// Returns the raw draft string (not JSON) so the UI can drop it straight into
 /// the editor.
 #[tauri::command]
-pub fn engine_app_draft_ideal(id: String, provider: String, model: String) -> Result<String, String> {
+pub fn engine_app_draft_ideal(id: String, provider: String, model: String, vault: Option<String>) -> Result<String, String> {
     let mut args: Vec<&str> = vec!["connectors", "draft-ideal", &id];
     if !provider.trim().is_empty() {
         args.push("--cli");
@@ -1217,6 +1225,15 @@ pub fn engine_app_draft_ideal(id: String, provider: String, model: String) -> Re
     if !model.trim().is_empty() {
         args.push("--model");
         args.push(&model);
+    }
+    // Target the SAME vault the UI is showing, so draft-ideal always finds the
+    // connector the user is looking at. Without this it fell back to the ambient
+    // vault, which could differ from where the app was added ("no connector with
+    // id X"). Mirrors engine_app_add / engine_apps_list, which both pass --vault.
+    let vault = vault.filter(|v| !v.trim().is_empty());
+    if let Some(v) = &vault {
+        args.push("--vault");
+        args.push(v);
     }
     // run_engine_json appends --json, so the sidecar emits { ok, draft } | { ok:false, error }.
     let v = run_engine_json(&args)?;
@@ -1325,32 +1342,41 @@ pub fn engine_skill_ideas(
 /// Save. Bunker-mode aware in the CLI. Returns { ok, presets: [{ name, rationale,
 /// models }] } so the UI can render without a second call.
 #[tauri::command]
-pub fn engine_bench_preset_suggest(
+pub async fn engine_bench_preset_suggest(
     models_json: String,
     provider: String,
     model: String,
 ) -> Result<serde_json::Value, String> {
-    let mut args: Vec<&str> = vec!["bench", "preset-suggest"];
-    if !provider.trim().is_empty() {
-        args.push("--cli");
-        args.push(&provider);
-    }
-    if !model.trim().is_empty() {
-        args.push("--model");
-        args.push(&model);
-    }
-    // The available-model list rides on stdin (see run_engine_json_stdin); the
-    // sidecar reads it when --models-json is absent. run_engine_json_stdin
-    // appends --json, so the sidecar emits { ok, presets } | { ok:false, error }.
-    let v = run_engine_json_stdin(&args, &models_json)?;
-    if v.get("ok").and_then(|b| b.as_bool()) == Some(false) {
-        return Err(v
-            .get("error")
-            .and_then(|e| e.as_str())
-            .unwrap_or("preset suggest failed")
-            .to_string());
-    }
-    Ok(v)
+    // The engine call spawns an AI CLI and BLOCKS for several seconds while it
+    // curates presets. A synchronous Tauri command runs on the main thread, so
+    // doing that work inline froze the whole UI. Run it on a blocking thread
+    // instead: the button flips to its "thinking" state immediately and the
+    // Arena stays interactive while the suggestion runs in the background.
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut args: Vec<&str> = vec!["bench", "preset-suggest"];
+        if !provider.trim().is_empty() {
+            args.push("--cli");
+            args.push(&provider);
+        }
+        if !model.trim().is_empty() {
+            args.push("--model");
+            args.push(&model);
+        }
+        // The available-model list rides on stdin (see run_engine_json_stdin);
+        // the sidecar reads it when --models-json is absent. run_engine_json_stdin
+        // appends --json, so the sidecar emits { ok, presets } | { ok:false, error }.
+        let v = run_engine_json_stdin(&args, &models_json)?;
+        if v.get("ok").and_then(|b| b.as_bool()) == Some(false) {
+            return Err(v
+                .get("error")
+                .and_then(|e| e.as_str())
+                .unwrap_or("preset suggest failed")
+                .to_string());
+        }
+        Ok(v)
+    })
+    .await
+    .map_err(|e| format!("join: {e}"))?
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -2376,6 +2402,7 @@ pub async fn engine_connector_learn_stream(
     session: String,
     goal: Option<String>,
     url: Option<String>,
+    vault: Option<String>,
 ) -> Result<(), String> {
     let mut args = vec![
         "connectors".to_string(),
@@ -2395,6 +2422,15 @@ pub async fn engine_connector_learn_stream(
             args.push(u);
         }
     }
+    // Learn against the SAME vault the app lives in, so browser-learn always
+    // finds the connector (otherwise "no connector with id X" when the ambient
+    // vault differs from where the app was added).
+    if let Some(v) = vault {
+        if !v.trim().is_empty() {
+            args.push("--vault".to_string());
+            args.push(v);
+        }
+    }
     run_engine_stream(app, session, args, "connector_learn").await
 }
 
@@ -2409,6 +2445,7 @@ pub async fn engine_connector_run_stream(
     session: String,
     mode: String,
     url: Option<String>,
+    vault: Option<String>,
 ) -> Result<(), String> {
     let sub = if mode == "relearn" { "browser-learn" } else { "browser-replay" };
     let mut args = vec![
@@ -2423,6 +2460,13 @@ pub async fn engine_connector_run_stream(
                 args.push("--url".to_string());
                 args.push(u);
             }
+        }
+    }
+    // Same vault the app lives in, so replay/relearn resolve the right connector.
+    if let Some(v) = vault {
+        if !v.trim().is_empty() {
+            args.push("--vault".to_string());
+            args.push(v);
         }
     }
     run_engine_stream(app, session, args, "connector_run").await
