@@ -1372,14 +1372,29 @@ export function ChatPanel({
               });
               break;
             }
+            case "tool": {
+              // Ground-truth tool activity from an Act/agent run - the REAL tools
+              // the model invoked. Collect onto the streaming bubble as a "tools
+              // used" strip so the user sees what actually ran (not model prose).
+              const note = stripAnsi(ev.text ?? "").trim();
+              if (note) {
+                setMessages((m) => {
+                  const last = m[m.length - 1];
+                  if (last && last.streaming) {
+                    return [...m.slice(0, -1), { ...last, toolLog: [...(last.toolLog ?? []), note] }];
+                  }
+                  return m;
+                });
+              }
+              break;
+            }
             case "done":
               // 'done' on the stream closes the turn; the dedicated
               // engine-chat:done event below flips streaming off.
               break;
             default:
               // Unknown event type - tolerate per the schema's forward-
-              // compat requirement. No-op. (Agent 'tool' events fall here; the
-              // authoritative action summary rides in the assistant footer.)
+              // compat requirement. No-op.
               break;
           }
       };
