@@ -2,7 +2,7 @@
 // Tasks, Intents, Memory & Context, and Skills. vaultPath-driven; no App-root
 // state closure.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Lightbulb, ListChecks, Loader2, Pencil, Sparkles, Upload, X } from "lucide-react";
+import { ArrowRight, Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Laptop, Lightbulb, ListChecks, Loader2, Pencil, Server, Sparkles, Upload, X } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
@@ -123,6 +123,29 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
     return () => { alive = false; window.clearInterval(id); };
   }, []);
 
+  // Machine role (hub | client) for a vault shared across two Macs. A client
+  // captures prompts only; every processing daemon is disabled here (enforcement
+  // lives in the CLI, this is presentation-only). Sourced from `prevail role`.
+  const [machineRole, setMachineRoleState] = useState<"hub" | "client">("hub");
+  const [roleBusy, setRoleBusy] = useState(false);
+  const isClient = machineRole === "client";
+  useEffect(() => {
+    let alive = true;
+    invoke<string>("machine_role_get").then((r) => { if (alive) setMachineRoleState(r === "client" ? "client" : "hub"); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  async function pickRole(next: "hub" | "client") {
+    if (next === machineRole || roleBusy) return;
+    setRoleBusy(true);
+    try {
+      await invoke<string>("machine_role_set", { role: next });
+      setMachineRoleState(next);
+      // Let the bottom trust-bar badge refresh immediately.
+      window.dispatchEvent(new Event("prevail:role-changed"));
+    } catch { /* leave the previous role selected on failure */ }
+    finally { setRoleBusy(false); }
+  }
+
   const Row = ({ title, desc, control }: { title: string; desc: string; control: React.ReactNode }) => (
     <div className="flex items-start justify-between gap-6 border-b border-border-subtle py-4 last:border-0">
       <div className="min-w-0 flex-1">
@@ -157,6 +180,50 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
         title="Daemons"
         subtitle="The background workers. Each runs continuously: distill intents into memory, fire task reminders, proactively generate tasks, and learn reusable skills from your conversations."
       />
+
+      {/* Machine role picker. When a vault is shared by two Macs, only the hub
+          runs background automation; a client captures prompts only. This is a
+          per-machine setting (not stored in the vault). */}
+      <div className="mb-4 rounded-lg border border-border-subtle bg-background p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-text-primary">This machine's role</div>
+            <div className="mt-0.5 text-xs text-text-secondary">
+              When one vault is shared by two Macs, only the hub runs background automation. A client captures prompts only. This is a per-machine setting and is not stored in the vault.
+            </div>
+          </div>
+          <div className="flex shrink-0 gap-1 rounded-lg border border-border bg-surface p-1">
+            {(["hub", "client"] as const).map((r) => {
+              const Icon = r === "hub" ? Server : Laptop;
+              const active = machineRole === r;
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  disabled={roleBusy}
+                  onClick={() => pickRole(r)}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors disabled:opacity-40 ${
+                    active ? "bg-accent text-white" : "text-text-muted hover:text-accent"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {r === "hub" ? "Hub" : "Client"}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {isClient && (
+          <div className="mt-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-text-secondary">
+            This machine is a client. The processing daemons below run only on the hub, so they are disabled here. Prompt capture still runs on this machine. Set the role to hub to run automation here.
+          </div>
+        )}
+      </div>
+
+      {/* On a client the processing-daemon controls are disabled (presentation
+          only; the CLI is the real enforcement). A disabled fieldset natively
+          switches off every toggle, select, input and button it contains. */}
+      <fieldset disabled={isClient} className={isClient ? "pointer-events-none opacity-50" : ""}>
       {/* One collapsible group per routine: status + tuning + run-now together. */}
       <DaemonGroup
         icon={Brain}
@@ -384,6 +451,7 @@ export function DaemonsSection({ vaultPath }: { vaultPath: string }) {
       {/* "Keep working with the app closed" is always-expanded (a single toggle, not
           collapsible), so it sits LAST - below the collapsible routine rows. */}
       <HeadlessLearnCard vaultPath={vaultPath} />
+      </fieldset>
     </>
   );
 }
