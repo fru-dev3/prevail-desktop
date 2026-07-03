@@ -118,7 +118,7 @@ export function ConnectorsSection({ vaultPath, focusAppId, catalogOnly }: { vaul
     setExpandedApp(id);
     if (!appSkills[id]) {
       try {
-        const sk = await invoke<{ id: string; runner: string; trigger: string }[]>("engine_app_skills", { id });
+        const sk = await invoke<{ id: string; runner: string; trigger: string }[]>("engine_app_skills", { id, vault: vaultPath });
         setAppSkills((s) => ({ ...s, [id]: sk }));
       } catch { setAppSkills((s) => ({ ...s, [id]: [] })); }
     }

@@ -1636,8 +1636,15 @@ pub fn engine_alignment(vault: String) -> Result<serde_json::Value, String> {
 
 /// One app's runnable skills (id/runner/trigger) for the per-app detail view.
 #[tauri::command]
-pub fn engine_app_skills(id: String) -> Result<serde_json::Value, String> {
-    run_engine_json(&["connectors", "skills", &id, "--json"])
+pub fn engine_app_skills(id: String, vault: Option<String>) -> Result<serde_json::Value, String> {
+    // Pass --vault so the SKILL LISTING resolves the SAME vault the run does
+    // (engine_app_run_skill passes it explicitly). Without this the listing used
+    // the ambient vault while the run used the UI's vault, so a listed skill
+    // could fail to run with "no skill X for connector Y".
+    match vault.filter(|v| !v.trim().is_empty()) {
+        Some(v) => run_engine_json(&["connectors", "skills", &id, "--vault", &v, "--json"]),
+        None => run_engine_json(&["connectors", "skills", &id, "--json"]),
+    }
 }
 
 /// One app's skill FILES as attachable context: the primary SKILL.md plus every

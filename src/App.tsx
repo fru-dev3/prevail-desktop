@@ -1883,6 +1883,7 @@ export default function App() {
                 // domain's stream keeps running in the engine and re-hydrates from
                 // its thread when you return.
                 key={`chat:${threadScope ?? "general"}`}
+                active={tab === "chat"}
                 domain={selectedDomain}
                 domainPath={selectedDomainPath}
                 threadDomain={threadScope}
