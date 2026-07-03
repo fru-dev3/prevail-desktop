@@ -3330,10 +3330,11 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
       </div>
       )}
 
-      {/* Tabbed detail (fix #7), mirroring the chat-experience tab pattern: a
-          pill row, one panel shown at a time. */}
-      <div className="border-b border-border-subtle px-6">
-        <div className="flex flex-wrap items-center gap-1 pb-3">
+      {/* App detail: a VERTICAL left rail of sections + details on the right
+          (the Connections-design layout). One panel shown at a time. */}
+      <div className="flex items-stretch">
+      <div className="w-44 shrink-0 border-r border-border-subtle px-2.5 py-4">
+        <div className="flex flex-col gap-0.5">
           {([
             { id: "welcome", label: "Welcome", icon: Plug },
             { id: "soul", label: "Ideal State", icon: Sparkles },
@@ -3364,10 +3365,10 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
                   if (t.id === "chat") { window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app })); return; }
                   setTab(t.id);
                 }}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${active ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-text-secondary"}`}
+                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${active ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-text-secondary"}`}
               >
-                <Icon className="h-3.5 w-3.5" />
-                {t.label}
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="flex-1 text-left">{t.label}</span>
                 {t.id === "skills" && skills.length > 0 && <span className={`rounded-full px-1.5 py-px font-mono text-[10px] ${active ? "bg-background/20 text-background" : "bg-surface-warm text-text-muted"}`}>{skills.length}</span>}
               </button>
             );
@@ -3375,7 +3376,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
         </div>
       </div>
 
-      <div className="px-6 py-5">
+      <div className="min-w-0 flex-1 px-6 py-5">
         {/* WELCOME - a short overview of what connecting this app does. */}
         {tab === "welcome" && (
           <div className="max-w-2xl space-y-4">
@@ -3692,6 +3693,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
             onChanged={() => { void onReload(); }}
           />
         )}
+      </div>
       </div>
 
       {/* Footer */}
