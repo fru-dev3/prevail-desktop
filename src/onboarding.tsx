@@ -16,11 +16,16 @@ const SEEN_KEY = "prevail.onboarding.seen";
 // centered (welcome + finish).
 type Step = { anchor?: string; eyebrow: string; title: string; body: string };
 const STEPS: Step[] = [
-  { eyebrow: "Welcome", title: "Welcome to Prevail", body: "Your private AI council, grounded in your real life. It learns you and gets sharper every time you use it. Quick tour - 30 seconds." },
-  { anchor: "[data-tour=\"domains\"]", eyebrow: "Step 1", title: "Your life, in domains", body: "Wealth, Health, Career… each domain keeps its own state, memory, journal, and decisions, so answers stay grounded in that part of your life. General is for anything cross-cutting." },
-  { anchor: "[data-tour=\"composer\"]", eyebrow: "Step 2", title: "Ask, with real context", body: "Type here to ask. Pull in context with $domain, attach skills with /, and Prevail grounds every answer in that domain's state and your Ideal State." },
-  { anchor: "[data-tour=\"nav\"]", eyebrow: "Step 3", title: "Chat, Council, Benchmark", body: "Chat is one model. Council asks several at once and a chair writes one verdict. Benchmark scores models on your real questions, so you know who to trust where." },
-  { anchor: "[data-tour=\"settings\"]", eyebrow: "Step 4", title: "Where it compounds", body: "In Settings: your Ideal State and Omega (what's learned across domains), Apps that feed real data, Gateways to reach Prevail from anywhere, and Loops that quietly close the gap to your goals." },
+  { eyebrow: "Welcome", title: "Welcome to Prevail", body: "Your private AI council, grounded in your real life. Everything runs on your machine and learns you over time, getting sharper every session. Quick tour - about a minute." },
+  { anchor: "[data-tour=\"domains\"]", eyebrow: "Domains", title: "Your life, in domains", body: "Wealth, Health, Career… each domain keeps its own state, memory, journal, decisions, and skills, so every answer stays grounded in that part of your life. General is for anything cross-cutting." },
+  { anchor: "[data-tour=\"composer\"]", eyebrow: "Chat", title: "Ask, with real context", body: "Type to ask. Pull in context with $, attach skills with /, and Prevail grounds every reply in that domain's state and your Ideal State. Drag a domain or app in to add it as context." },
+  { anchor: "[data-tour=\"nav\"]", eyebrow: "Council", title: "One model, or many", body: "Chat is one model. Council asks several at once and a chair writes a single verdict for the judgment calls that matter." },
+  { eyebrow: "Arena", title: "Know who to trust where", body: "The Arena benchmarks models on your own questions, per domain - a real leaderboard, presets, and schedules. Save a preset, run it, and see which model wins on the work you actually do." },
+  { eyebrow: "Ideal State & skills", title: "Set the target, teach the moves", body: "Your Ideal State is what 'thriving' looks like for each domain - Prevail closes the gap to it. Skills are reusable procedures it learns (or you write) and can run on command." },
+  { eyebrow: "Apps", title: "Feed it your real data", body: "Connect apps - Google, banks, calendars, and more - so answers are grounded in your actual data, pulled into your private vault on this Mac. Prevail can suggest which apps fit each domain." },
+  { eyebrow: "Automations", title: "It works while you're away", body: "Loops are standing routines that quietly close the gap to your goals on a cadence. The Activity page is the full, transparent log of everything Prevail does on its own." },
+  { eyebrow: "Privacy & safety", title: "You hold the controls", body: "Bunker mode (globally or per domain) keeps everything on local models. A graduated autonomy brake means only consequential actions stop for your approval. Web access and spend caps are enforced, not cosmetic." },
+  { anchor: "[data-tour=\"settings\"]", eyebrow: "Workspace", title: "Vaults & profiles", body: "Your vault is where all this data lives - back it up, or switch between a real vault and the demo. Profiles keep separate identities fully isolated, each with its own vault." },
   { eyebrow: "Ready", title: "You're set", body: "You're in the demo sandbox with sample data - safe to explore. Switch to your own vault from Settings → Workspace whenever you're ready. Replay this tour anytime from About." },
 ];
 
