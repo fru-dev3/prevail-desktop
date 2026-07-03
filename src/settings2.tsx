@@ -500,6 +500,7 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
   const JOURNAL_PAGE = 50;
   const [intentsShown, setIntentsShown] = useState(INTENTS_PAGE);
   const [journalShown, setJournalShown] = useState(JOURNAL_PAGE);
+  const [intentQuery, setIntentQuery] = useState("");
   // Recommendations that have been turned into tracked tasks (keyed intent:rec).
   const [addedRecs, setAddedRecs] = useState<Set<string>>(new Set());
   async function addRecAsTask(intent: DistilledIntent, rec: string, key: string) {
@@ -563,9 +564,16 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
   const statusTone = (s?: string) => s === "active" ? "text-accent" : s === "resolved" ? "text-ok" : "text-text-muted";
   // Non-dismissed intents (original index preserved for openIntent/dismiss keys),
   // then sliced to the current page.
+  const iq = intentQuery.trim().toLowerCase();
   const visibleIntentPairs = distilled.intents
     .map((it, i) => [it, i] as const)
-    .filter(([it, i]) => !dismissed.has(intentKey(it, i)));
+    .filter(([it, i]) => !dismissed.has(intentKey(it, i)))
+    .filter(([it]) =>
+      !iq ||
+      [it.title, it.goal, it.underlying_need, it.status, ...(it.domains ?? []), ...(it.sources ?? []), ...(it.recommendations ?? []), ...(it.open_questions ?? []), ...(it.evidence ?? [])]
+        .filter(Boolean)
+        .some((s) => String(s).toLowerCase().includes(iq)),
+    );
   const pagedIntents = visibleIntentPairs.slice(0, intentsShown);
   // Captured rows carry a tool slug as their `domain`; keep those out of the
   // life-domain filter so the dropdown stays meaningful (you filter them by
@@ -609,6 +617,21 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
         </button>
       </div>
       {distillMsg && <div className="mb-3 rounded-md border border-border-subtle bg-surface px-3 py-2 text-xs text-text-secondary">{distillMsg}</div>}
+      {distilled.intents.length > 0 && (
+        <div className="mb-3">
+          <input
+            value={intentQuery}
+            onChange={(e) => { setIntentQuery(e.target.value); setIntentsShown(INTENTS_PAGE); }}
+            placeholder="search intents…"
+            className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+          />
+          {intentQuery.trim() && (
+            <div className="mt-1 px-1 font-mono text-[10px] text-text-muted">
+              {visibleIntentPairs.length} of {distilled.intents.length} intents match “{intentQuery.trim()}”
+            </div>
+          )}
+        </div>
+      )}
       {distilled.intents.length === 0 ? (
         <div className="mb-6 rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-text-muted">
           No distilled intents yet. Hit <span className="text-accent">Distill intents</span> to infer the goals behind your prompts and get recommended next actions.
