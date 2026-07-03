@@ -132,6 +132,35 @@ pub(crate) fn ui_prefs_set(json: String) -> Result<(), String> {
     fs::write(&p, json).map_err(|e| e.to_string())
 }
 
+// Per-PROFILE prefs live IN the profile's vault (build/_meta/profile-prefs.json),
+// so a profile's domain toggles / model picks / policy travel with its vault and
+// are captured by a vault backup - unlike ui-prefs.json, which is machine-global.
+// This is the storage half of profile isolation: on switching to a profile the
+// desktop hydrates from here; on leaving it snapshots the syncable prefs here.
+fn profile_prefs_path(vault: &str) -> std::path::PathBuf {
+    crate::paths::runtime_path(vault, "_meta").join("profile-prefs.json")
+}
+
+#[tauri::command]
+pub(crate) fn profile_prefs_get(vault: String) -> String {
+    read_to_string_retry(&profile_prefs_path(&vault))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+#[tauri::command]
+pub(crate) fn profile_prefs_set(vault: String, json: String) -> Result<(), String> {
+    serde_json::from_str::<serde_json::Value>(&json)
+        .map_err(|e| format!("invalid profile prefs json: {e}"))?;
+    let p = profile_prefs_path(&vault);
+    if let Some(dir) = p.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    fs::write(&p, json).map_err(|e| e.to_string())
+}
+
 /// Persist cross-device UI settings. The frontend owns the schema; we only
 /// validate that it's well-formed JSON so we never write garbage to disk.
 #[tauri::command]

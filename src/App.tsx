@@ -4,7 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { titleCase } from "./format";
 import type { CliInfo, Domain, DomainTab, EngineApp, TabId, ThreadMeta } from "./types";
-import { BUNKER_LS, LS, PREF, getPref, hydrateUiPrefs, isBunkerOn, lsGet, lsSet } from "./storage";
+import { BUNKER_LS, LS, PREF, getPref, hydrateUiPrefs, hydrateProfilePrefs, saveProfilePrefs, isBunkerOn, lsGet, lsSet } from "./storage";
 import { track } from "./telemetry";
 import { ensureDefaultProfile, getOwnedProfile } from "./profiles";
 import { QuickCapture } from "./quickcapture";
@@ -281,6 +281,7 @@ export default function App() {
     const onSwitch = (e: Event) => {
       const vp = (e as CustomEvent<{ vaultPath?: string; profileId?: string }>).detail?.vaultPath;
       if (!vp || vp === vaultPath) return;
+      const prevVault = vaultPath;
       setSelectedApp(null);
       setAppView(false);
       setSelectedDomain(null);
@@ -288,10 +289,18 @@ export default function App() {
       setChatViewNonce((n) => n + 1);
       setUnlocked(false);
       setVaultStatusChecked(false);
-      setVaultPath(vp);
-      lsSet(LS.vault, vp);
-      setTab("chat");
-      window.dispatchEvent(new Event("prevail:domains-changed"));
+      // Profile isolation: snapshot the profile we're LEAVING into its vault, then
+      // load the profile we're ENTERING from its vault, so each profile's toggles /
+      // model picks / policy travel with its own vault instead of the machine.
+      void (async () => {
+        await saveProfilePrefs(prevVault);
+        await hydrateProfilePrefs(vp);
+        setVaultPath(vp);
+        lsSet(LS.vault, vp);
+        setTab("chat");
+        setUiPrefsNonce((n) => n + 1);
+        window.dispatchEvent(new Event("prevail:domains-changed"));
+      })();
     };
     window.addEventListener("prevail:switch-profile", onSwitch as EventListener);
     return () => window.removeEventListener("prevail:switch-profile", onSwitch as EventListener);
