@@ -1729,7 +1729,17 @@ export function ChatPanel({
         // focused goal (the user's message plus anything they explicitly
         // attached); the agent grounds itself in the domain and calls Prevail's
         // vault-scoped tools (create_skill / create_loop / google_workspace).
-        const agentGoal = `${attachPreamble}${primedPreamble}${skillsPreamble}${visible}`.trim();
+        // If the user picked specific Google account(s) in Modes, tell the agent
+        // which profile(s) to act for so google_workspace targets the right
+        // inbox(es) and labels results by account (multi-profile in one send).
+        let gAccNote = "";
+        try {
+          const picked = JSON.parse(getPref(`prevail.domain.${domain}.googleAccounts`, "[]")) as string[];
+          if (Array.isArray(picked) && picked.length > 0) {
+            gAccNote = `\n\n[Google accounts to act for: ${picked.join(", ")}. For each Google/gmail/calendar/drive action, pass account:"<label>" to the google_workspace tool, and label any results by account.]`;
+          }
+        } catch { /* no valid selection — act on the default account */ }
+        const agentGoal = `${attachPreamble}${primedPreamble}${skillsPreamble}${visible}${gAccNote}`.trim();
         await invoke("engine_agent_run", {
           session: sessionRef.current,
           vault: vaultPath,
