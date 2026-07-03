@@ -406,10 +406,19 @@ export function DomainStatusBar({
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [modesOpen]);
-  // Load connected Google profiles when the Modes popover opens (cheap, cached
-  // by gws). Only accounts that are actually connected / have an email show up.
+  // The Google account chooser is a TOP-LEVEL composer control (not buried in
+  // Modes) so the active account is always visible and one click to change.
+  const [gOpen, setGOpen] = useState(false);
+  const gRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!modesOpen) return;
+    if (!gOpen) return;
+    const onDoc = (e: MouseEvent) => { if (gRef.current && !gRef.current.contains(e.target as Node)) setGOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [gOpen]);
+  // Load connected Google profiles on mount (cheap, cached by gws) so the
+  // top-level account chip can render. Only connected accounts show up.
+  useEffect(() => {
     let alive = true;
     invoke<Array<{ label?: string; email?: string | null; status?: string }>>("google_profiles")
       .then((ps) => {
@@ -419,9 +428,9 @@ export function DomainStatusBar({
           .map((p) => ({ label: String(p.label), email: p.email ?? null, status: String(p.status ?? "unknown") }));
         setGProfiles(rows);
       })
-      .catch(() => { /* no gws / no accounts — section just stays hidden */ });
+      .catch(() => { /* no gws / no accounts — chip just stays hidden */ });
     return () => { alive = false; };
-  }, [modesOpen]);
+  }, []);
   // Bunker Mode forbids any request leaving the device, so Web access can never
   // be on while it's active. We show it off and locked regardless of the stored
   // preference (which is preserved for when Bunker Mode is turned back off). The
@@ -506,38 +515,6 @@ export function DomainStatusBar({
                 desc="Log replies so you can re-read them later." />
               <ModeRow label="Incognito" on={incogOn} disabled={globalIncognito} onClick={toggleIncognito}
                 desc={globalIncognito ? "Forced on in Privacy settings." : "Plain model: none of your context is sent."} />
-              {gProfiles.length > 0 && (
-                <div className="mt-1 border-t border-border/60 px-2.5 pb-1 pt-2">
-                  <div className="mb-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Google accounts</div>
-                  <div className="mb-1.5 text-[11px] leading-snug text-text-muted">
-                    {act ? "Which account(s) Act mode uses for Google. Pick more than one to work across inboxes in one send." : "Turn on Act mode to have this domain act for the account(s) you pick here."}
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    {gProfiles.map((p) => {
-                      const on = gSelected.includes(p.label);
-                      const who = p.email || p.label;
-                      const initial = (who || "?").charAt(0).toUpperCase();
-                      return (
-                        <button
-                          key={p.label}
-                          type="button"
-                          onClick={() => toggleGAccount(p.label)}
-                          title={`${p.label}${p.email ? ` — ${p.email}` : ""}`}
-                          className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-left transition-colors ${
-                            on ? "border-accent-border bg-accent-soft" : "border-border bg-surface hover:bg-surface-warm"
-                          }`}
-                        >
-                          <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
-                            on ? "bg-accent text-background" : "bg-surface-warm text-text-secondary"
-                          }`}>{initial}</span>
-                          <span className="min-w-0 flex-1 truncate text-[12px] text-text-primary">{who}</span>
-                          {on && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
               {auto && (
                 <div className="flex items-center justify-between gap-2 px-3 py-2">
                   <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Trigger</span>
@@ -554,6 +531,57 @@ export function DomainStatusBar({
             </div>
           )}
         </div>
+        {/* Top-level Google account chip - always visible when accounts exist, so
+            the active account is obvious and one click to change (not buried). */}
+        {gProfiles.length > 0 && (
+          <div ref={gRef} className="relative inline-flex items-center">
+            <span className="mx-1 select-none text-text-muted/40">·</span>
+            <button
+              onClick={() => setGOpen((v) => !v)}
+              title="Choose which Google account(s) this domain uses"
+              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
+                gOpen ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-surface text-text-muted hover:bg-surface-warm hover:text-text-secondary"
+              }`}
+            >
+              {(() => {
+                const sel = gProfiles.filter((p) => gSelected.includes(p.label));
+                if (sel.length === 0) return (<><span className="flex h-4 w-4 items-center justify-center rounded-full bg-surface-warm text-[9px] font-bold text-text-secondary">G</span> Google</>);
+                if (sel.length === 1) { const who = sel[0].email || sel[0].label; return (<><span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-background">{(who || "?").charAt(0).toUpperCase()}</span> <span className="normal-case">{who.split("@")[0] || who}</span></>); }
+                return (<><span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-background">{sel.length}</span> accounts</>);
+              })()}
+            </button>
+            {gOpen && (
+              <div className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-xl border border-border bg-surface p-1.5 shadow-xl">
+                <div className="px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Google account</div>
+                <div className="mb-1 px-2.5 text-[11px] leading-snug text-text-muted">Which account(s) this domain uses for Google. Pick more than one to work across inboxes.</div>
+                <div className="flex flex-col gap-1 p-1">
+                  {gProfiles.map((p) => {
+                    const on = gSelected.includes(p.label);
+                    const who = p.email || p.label;
+                    const initial = (who || "?").charAt(0).toUpperCase();
+                    return (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => toggleGAccount(p.label)}
+                        title={`${p.label}${p.email ? ` — ${p.email}` : ""}`}
+                        className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-left transition-colors ${
+                          on ? "border-accent-border bg-accent-soft" : "border-border bg-surface hover:bg-surface-warm"
+                        }`}
+                      >
+                        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                          on ? "bg-accent text-background" : "bg-surface-warm text-text-secondary"
+                        }`}>{initial}</span>
+                        <span className="min-w-0 flex-1 truncate text-[12px] text-text-primary">{who}</span>
+                        {on && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
     </>
   );
 }

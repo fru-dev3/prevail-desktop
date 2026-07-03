@@ -425,6 +425,13 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
   const domainApps = useMemo(() => (apps ?? []).filter((a) => a.domains.includes(domain)), [apps, domain]);
   // Apps NOT yet feeding this domain - the candidates the picker offers.
   const available = useMemo(() => (apps ?? []).filter((a) => !a.domains.includes(domain)), [apps, domain]);
+  // Never re-suggest an app that already feeds this domain (match on normalized
+  // name or id). Keeps the "suggested for X" list to genuinely new options.
+  const visibleSuggestions = useMemo(() => {
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const have = new Set(domainApps.flatMap((a) => [norm(a.title || ""), norm(a.id || "")]).filter(Boolean));
+    return suggestions.filter((s) => !have.has(norm(s.name)));
+  }, [suggestions, domainApps]);
 
   async function sync(id: string) {
     setProbing(id);
@@ -510,13 +517,13 @@ export function DomainAppsTab({ domain, vaultPath }: { domain: string; vaultPath
             {suggesting ? "thinking" : suggestions.length ? "refresh" : "suggest apps"}
           </button>
         </div>
-        {suggestions.length === 0 ? (
+        {visibleSuggestions.length === 0 ? (
           <div className="px-1 py-2 text-[12px] text-text-muted">
             {suggesting ? "Learning from your activity in this domain…" : "No suggestions yet. They appear automatically as Prevail learns from your activity here, or hit refresh."}
           </div>
         ) : (
           <div className="space-y-1.5">
-            {suggestions.map((s) => {
+            {visibleSuggestions.map((s) => {
               const adding = addingSuggestion === s.name;
               return (
               <div key={s.name} className="flex items-center gap-3 rounded-md px-1 py-1.5">
