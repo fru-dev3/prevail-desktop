@@ -3310,7 +3310,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <button onClick={() => toggleFavorite(favKey)} title={isFav ? "On your home screen, click to remove" : "Add to your home screen"} aria-pressed={isFav}
+          <button onClick={() => toggleFavorite(favKey)} aria-label={isFav ? "Unpin from home screen" : "Pin to home screen"} title={isFav ? "Pinned to your home screen — click to unpin" : "Pin to your home screen for quick access"} aria-pressed={isFav}
             className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${isFav ? "border-accent-border bg-accent-soft text-accent" : "border-border text-text-muted hover:border-accent-border hover:text-accent"}`}>
             <Star className={`h-4 w-4 ${isFav ? "fill-accent" : ""}`} />
           </button>
@@ -3335,7 +3335,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
                 <button onClick={() => connect.onResearch!()} disabled={connect?.connecting} aria-label="Find the best way to connect"
                   title="Find the best way to connect: Prevail researches MCP, an official API, a local CLI, or a guided browser login, recommends the best one with a reason, then sets it up after you confirm."
                   className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-muted transition-colors hover:border-accent-border hover:text-accent disabled:opacity-60">
-                  <Search className="h-4 w-4" />
+                  <Sparkles className="h-4 w-4" />
                 </button>
               )}
               {hasRunnableSkills ? null : <ConnectBtn label="Add" />}
