@@ -373,17 +373,18 @@ export function CouncilPanel({
   const attachDomainRef = useRef(attachCouncilDomain);
   const attachAppRef = useRef(attachCouncilApp);
   useEffect(() => { attachDomainRef.current = attachCouncilDomain; attachAppRef.current = attachCouncilApp; });
+  // Claim the global drag-attach hook ONLY while Council is the active surface,
+  // so a dropped app/domain/skill lands in Council and not in the hidden chat
+  // panel. Mirrors chatpanel: re-claim on activation, no cleanup-delete.
   useEffect(() => {
+    if (!active) return;
     const w = window as unknown as {
       __prevailAttach?: (n: string, mode?: "light" | "full" | "folder") => void;
       __prevailAttachApp?: (id: string) => void;
     };
     w.__prevailAttach = (n, mode) => void attachDomainRef.current(n, mode ?? "light");
     w.__prevailAttachApp = (id) => void attachAppRef.current(id);
-    return () => {
-      try { delete w.__prevailAttach; delete w.__prevailAttachApp; } catch { /* ignore */ }
-    };
-  }, []);
+  }, [active]);
   type DollarItem = { kind: "domain" | "app"; id: string; label: string; sub?: string };
   const slashMatch = useMemo(() => {
     const caret = Math.min(caretPos, prompt.length);

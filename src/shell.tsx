@@ -69,7 +69,7 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
   useEffect(() => { setDoms(app.domains); setAddOpen(false); setAddValue(""); }, [app.id, app.domains]);
   useEffect(() => {
     setSkills(null);
-    invoke<{ id: string; runner: string; trigger: string }[]>("engine_app_skills", { id: app.id }).then(setSkills).catch(() => setSkills([]));
+    invoke<{ id: string; runner: string; trigger: string }[]>("engine_app_skills", { id: app.id, vault: vaultPath }).then(setSkills).catch(() => setSkills([]));
   }, [app.id]);
   // Per-app run history (the bounded ring the sync layer records). Refetched
   // when the app changes and after a manual "Sync now" so the list stays live.

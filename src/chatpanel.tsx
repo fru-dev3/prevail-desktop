@@ -95,6 +95,7 @@ export function ChatPanel({
   domains,
   domainTab,
   setDomainTab,
+  active = true,
 }: {
   domain: string | null;
   domainPath: string | null;
@@ -128,6 +129,10 @@ export function ChatPanel({
   onPickDomain: (name: string) => void;
   domainTab: DomainTab;
   setDomainTab: (t: DomainTab) => void;
+  // Whether this is the ACTIVE surface (chat tab, not council). Only the active
+  // surface claims the global drag-attach hook so a dropped app/domain lands
+  // here and not in the hidden-but-mounted council panel (and vice versa).
+  active?: boolean;
 }) {
   const available = useMemo(() => clis.filter((c) => c.available), [clis]);
   // Thread storage scope: the app's own space when given, else the domain.
@@ -1935,17 +1940,19 @@ export function ChatPanel({
   const attachDomainRef = useRef(attachDomainAsContext);
   const attachAppRef = useRef(attachAppAsContext);
   useEffect(() => { attachDomainRef.current = attachDomainAsContext; attachAppRef.current = attachAppAsContext; });
+  // Claim the global drag-attach hook ONLY while this is the active surface, so a
+  // dropped app/domain lands here and not in the hidden council panel (both stay
+  // mounted). Re-claims whenever `active` flips true; no cleanup-delete so the
+  // other surface's re-claim (on its activation) is the single source of truth.
   useEffect(() => {
+    if (!active) return;
     const w = window as unknown as {
       __prevailAttach?: (n: string, mode?: "light" | "full" | "folder") => void;
       __prevailAttachApp?: (id: string) => void;
     };
     w.__prevailAttach = (n, mode) => void attachDomainRef.current(n, mode ?? "light");
     w.__prevailAttachApp = (id) => void attachAppRef.current(id);
-    return () => {
-      try { delete w.__prevailAttach; delete w.__prevailAttachApp; } catch {}
-    };
-  }, []);
+  }, [active]);
 
   // Domain detail shell (mirrors AppDetail): a header + horizontal pill tab bar,
   // one panel shown at a time. Active when a real domain is open and we're not on
