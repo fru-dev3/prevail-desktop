@@ -4,11 +4,12 @@
 // (_meta/activity.jsonl) - loop runs, executed approvals, tasks filed by loops,
 // briefings, app syncs. Full transparency into the autonomous system, at scale.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, ChevronRight, ListPlus, Loader2, Mail, RefreshCw, RotateCw, Zap, Repeat, Bell, Workflow, CornerDownRight } from "lucide-react";
+import { Activity, ArrowUpRight, ChevronRight, ListPlus, Loader2, Mail, RefreshCw, RotateCw, Zap, Repeat, Bell, Workflow, CornerDownRight } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase, relTime } from "./format";
 import { useProcesses } from "./processes";
 import { SettingsHeader } from "./sectionutil";
+import type { EngineApp } from "./types";
 
 // These mirror the engine's activity-ledger producer types (cli activity.ts).
 // Keep them in lockstep: any type the engine writes must be representable here,
@@ -145,8 +146,68 @@ const FILTERS: { id: ActivityType | "all"; label: string }[] = [
   { id: "sync", label: "Syncs" },
 ];
 
-// The Playbooks tab covers both the run-level "playbook" event and its
-// per-step "playbook_step" children, so a single tab shows the whole run.
+// The label on each row's "jump to source" link, by event kind. Every
+// autonomous event traces back to a real surface (its loop, the task board, the
+// domain it briefed, the app it synced), so every row is navigable.
+const SOURCE_LABEL: Partial<Record<ActivityType, string>> = {
+  loop_run: "Open loop",
+  loop_exec: "Open loop",
+  playbook: "Open loop",
+  playbook_step: "Open loop",
+  nudge: "Open loop",
+  task_filed: "Open board",
+  briefing: "Open journal",
+  sync: "Open app",
+};
+
+// Route an activity event back to the surface that produced it, reusing the
+// same window-event nav vocabulary the rest of the shell already listens to.
+// `ref`/`domain` on the event carry the loop id, app id, or domain we need.
+async function openActivitySource(e: ActivityEvent, vaultPath: string): Promise<void> {
+  const dom = typeof e.domain === "string" ? e.domain : "";
+  switch (e.type) {
+    case "loop_run":
+    case "loop_exec":
+    case "playbook":
+    case "playbook_step":
+    case "nudge":
+      if (dom) {
+        window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: dom }));
+        window.dispatchEvent(new CustomEvent("prevail:domain-tab", { detail: "loops" }));
+      } else {
+        window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: "loopboard" }));
+      }
+      return;
+    case "task_filed":
+      window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "tasks" }));
+      return;
+    case "briefing":
+      if (dom) {
+        window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: dom }));
+        window.dispatchEvent(new CustomEvent("prevail:domain-tab", { detail: "journal" }));
+      } else {
+        window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: "activity" }));
+      }
+      return;
+    case "sync": {
+      const key = (typeof e.ref === "string" && e.ref) || (typeof e.appId === "string" ? e.appId : "") || dom;
+      try {
+        const apps = await invoke<EngineApp[]>("engine_apps_list", { vault: vaultPath });
+        const a = Array.isArray(apps)
+          ? apps.find((x) => x.id === key || x.title?.toLowerCase() === String(key).toLowerCase())
+          : undefined;
+        if (a) { window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: a })); return; }
+      } catch { /* fall through to the Apps list */ }
+      window.dispatchEvent(new CustomEvent("prevail:settings-section", { detail: "connectors" }));
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+// The Playbooks run-level event and its per-step children both surface under the
+// "All" view; there's no dedicated Playbooks tab.
 function matchesType(eventType: ActivityType, filter: ActivityType | "all"): boolean {
   if (filter === "all") return true;
   if (filter === "playbook") return eventType === "playbook" || eventType === "playbook_step";
@@ -270,22 +331,32 @@ export function SystemActivity({ vaultPath }: { vaultPath: string }) {
                   <span className={`absolute -left-[21px] top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-surface ring-2 ring-surface ${e.status === "error" ? "text-err" : m.tint}`}>
                     <Icon className="h-3 w-3" />
                   </span>
-                  <button type="button" aria-expanded={open}
-                    onClick={() => setExpandedId(open ? null : id)}
-                    className="group -mx-2 flex w-[calc(100%+1rem)] items-start gap-2 rounded-lg px-2 py-1 text-left transition-colors hover:bg-surface-warm">
-                    <ChevronRight className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted transition-transform group-hover:text-text-secondary ${open ? "rotate-90" : ""}`} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-text-muted">
-                        <span className={m.tint}>{m.label}</span>
-                        {e.domain && <span className="rounded bg-surface-warm px-1.5 py-0.5 text-text-secondary">{titleCase(e.domain)}</span>}
-                        <span>{relTime(e.ts)}</span>
-                        {e.status === "error" && <span className="text-err">failed</span>}
-                        {e.status === "pending" && <span className="text-warn">needs setup</span>}
+                  <div className="group -mx-2 flex items-start rounded-lg transition-colors hover:bg-surface-warm">
+                    <button type="button" aria-expanded={open}
+                      onClick={() => setExpandedId(open ? null : id)}
+                      className="flex min-w-0 flex-1 items-start gap-2 px-2 py-1 text-left">
+                      <ChevronRight className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted transition-transform group-hover:text-text-secondary ${open ? "rotate-90" : ""}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-text-muted">
+                          <span className={m.tint}>{m.label}</span>
+                          {e.domain && <span className="rounded bg-surface-warm px-1.5 py-0.5 text-text-secondary">{titleCase(e.domain)}</span>}
+                          <span>{relTime(e.ts)}</span>
+                          {e.status === "error" && <span className="text-err">failed</span>}
+                          {e.status === "pending" && <span className="text-warn">needs setup</span>}
+                        </div>
+                        <div className="mt-0.5 text-[13px] leading-snug text-text-primary">{e.title}</div>
+                        {e.detail && <div className="mt-0.5 text-[11px] leading-relaxed text-text-muted">{e.detail}</div>}
                       </div>
-                      <div className="mt-0.5 text-[13px] leading-snug text-text-primary">{e.title}</div>
-                      {e.detail && <div className="mt-0.5 text-[11px] leading-relaxed text-text-muted">{e.detail}</div>}
-                    </div>
-                  </button>
+                    </button>
+                    {SOURCE_LABEL[e.type] && (
+                      <button type="button"
+                        onClick={(ev) => { ev.stopPropagation(); void openActivitySource(e, vaultPath); }}
+                        title={`${SOURCE_LABEL[e.type]} — go to the source of this event`}
+                        className="mr-1 mt-1.5 inline-flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted opacity-60 transition-all hover:bg-surface hover:text-accent group-hover:opacity-100">
+                        {SOURCE_LABEL[e.type]}<ArrowUpRight className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                   {open && <ActivityDetail event={e} />}
                 </li>
               );
