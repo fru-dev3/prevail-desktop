@@ -315,8 +315,15 @@ pub(crate) fn capture_stream_line_counts(vault: &str) -> std::collections::BTree
 /// `domain` provenance tag), newest first, capped at `limit`. Mirrors the shape
 /// `intents_read_all` returns so the two merge cleanly in the distiller.
 fn read_capture_prompts(vault: &str, limit: Option<usize>) -> Vec<serde_json::Value> {
-    let mut out: Vec<serde_json::Value> = Vec::new();
-    let Ok(rd) = read_dir_retry(&capture_stream_dir(vault)) else { return out };
+    // Dedup by exact prompt text, keeping the newest occurrence. Prevail's own
+    // background model calls (distill/taskgen/skillgen/…) prepend the same
+    // ideal-state preamble and, if the capture hook is installed, each spawn
+    // self-records the identical prompt - so the journal filled with 5x copies
+    // of "# THE USER'S IDEAL STATE …". Collapsing identical prompts removes that
+    // noise on read. (The deeper fix is to stop capturing internal calls.)
+    use std::collections::HashMap;
+    let mut by_prompt: HashMap<String, serde_json::Value> = HashMap::new();
+    let Ok(rd) = read_dir_retry(&capture_stream_dir(vault)) else { return Vec::new() };
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
         if !name.ends_with(".jsonl") {
@@ -331,7 +338,7 @@ fn read_capture_prompts(vault: &str, limit: Option<usize>) -> Vec<serde_json::Va
             }
             let tool = v.get("tool").and_then(|t| t.as_str()).unwrap_or("cli");
             let ts = v.get("epoch_ms").and_then(|t| t.as_i64()).unwrap_or(0);
-            out.push(serde_json::json!({
+            let rec = serde_json::json!({
                 "kind": "intent",
                 "message": prompt,
                 "domain": tool,
@@ -340,9 +347,15 @@ fn read_capture_prompts(vault: &str, limit: Option<usize>) -> Vec<serde_json::Va
                 "surface": tool,
                 "ts": ts,
                 "source": v.get("source").and_then(|s| s.as_str()).unwrap_or("sync"),
-            }));
+            });
+            // Keep the newest occurrence of each identical prompt.
+            match by_prompt.get(prompt) {
+                Some(existing) if existing.get("ts").and_then(|t| t.as_i64()).unwrap_or(0) >= ts => {}
+                _ => { by_prompt.insert(prompt.to_string(), rec); }
+            }
         }
     }
+    let mut out: Vec<serde_json::Value> = by_prompt.into_values().collect();
     out.sort_by_key(|v| std::cmp::Reverse(v.get("ts").and_then(|t| t.as_i64()).unwrap_or(0)));
     if let Some(n) = limit {
         out.truncate(n);
