@@ -251,7 +251,7 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
     try {
       const provider = getPref(PREF.memoryProvider, "claude");
       const model = getPref(PREF.distillModel, "claude-haiku-4-5");
-      const text = await invoke<string>("engine_app_draft_ideal", { id: GOOGLE_APP_ID, provider, model });
+      const text = await invoke<string>("engine_app_draft_ideal", { id: GOOGLE_APP_ID, provider, model, vault: vaultPath });
       if (text?.trim()) { setSoulDraft(text.trim()); setEditSoul(true); }
     } catch (e) { setDraftErr(String(e)); }
     finally { setDraftBusy(false); }
@@ -626,7 +626,7 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
 
             {learnMode ? (
               <div className="mt-3">
-                <ConnectorRunPanel appId={GOOGLE_APP_ID} mode={learnMode} goal={goalText || undefined} url={GOOGLE_WEBSITE}
+                <ConnectorRunPanel appId={GOOGLE_APP_ID} mode={learnMode} goal={goalText || undefined} url={GOOGLE_WEBSITE} vault={vaultPath}
                   onDone={(ok) => { loadSkills(); if (ok) setLearnMode(null); }}
                   onClose={() => setLearnMode(null)} />
               </div>
