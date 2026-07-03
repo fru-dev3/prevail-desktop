@@ -5,13 +5,14 @@ import { Compass, Sigma, Target } from "lucide-react";
 import { useAppearance } from "./hooks";
 import { SettingsHeader } from "./sectionutil";
 import { ProviderMark } from "./marks";
-import { FrameworksSection, RemoteSection, ShortcutsSection } from "./settings1";
+import { FrameworksSection, IngestionSection, RemoteSection, ShortcutsSection } from "./settings1";
 import { DaemonsSection, IntentsSection, MemoryContextSection, SkillsSection } from "./settings2";
 import { BoardPanel } from "./boardpanel";
 import { AppsPanel } from "./appspanel";
 import { RecommendationsPanel } from "./recommendationspanel";
 import { SystemActivity } from "./activitypanel";
 import { RetrospectPanel } from "./retrospectpanel";
+import { ToolsPanel } from "./toolspanel";
 import { AutonomyPanel } from "./autonomypanel";
 import { LoopBoard } from "./loopboard";
 import { SparkPanel } from "./spark";
@@ -52,7 +53,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "autonomy" | "council" | "gateway" | "mcp" | "prompt-capture" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "retrospect" | "loopboard" | "spark" | "hooks" | "profiles";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "configuration" | "ideal-state" | "omega" | "memory" | "intents" | "tasks" | "decisions" | "daemons" | "safety" | "autonomy" | "council" | "gateway" | "mcp" | "prompt-capture" | "integrations" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "recommendations" | "activity" | "retrospect" | "loopboard" | "spark" | "hooks" | "profiles" | "tools" | "ingestion";
   // Editor lands on General. The operational surfaces (Work board / Insights /
   // Spark) moved to Work mode, so Editor opens on a config page. A specific
   // jumpTo (e.g. "connectors") still wins.
@@ -162,6 +163,8 @@ export function SettingsPanel({
           {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
           {section === "activity" && <SystemActivity vaultPath={vaultPath} />}
           {section === "retrospect" && <RetrospectPanel vaultPath={vaultPath} />}
+          {section === "tools" && <ToolsPanel />}
+          {section === "ingestion" && <IngestionSection />}
           {section === "loopboard" && <LoopBoard vaultPath={vaultPath} />}
           {section === "council" && <CouncilSettingsSection clis={clis} />}
           {/* Apps bleeds past the page's left padding so its panel attaches
