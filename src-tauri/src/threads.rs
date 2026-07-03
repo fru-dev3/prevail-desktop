@@ -321,7 +321,7 @@ pub(crate) fn list_threads(vault: String, domain: Option<String>) -> Result<Vec<
 
 #[tauri::command]
 pub(crate) fn load_thread(path: String) -> Result<ThreadFull, String> {
-    guard_managed_path(&path, "/_threads/", ".md")?;
+    guard_managed_path(&path, "/threads/", ".md")?;
     let p = PathBuf::from(&path);
     if !p.exists() {
         return Err(format!("thread not found: {path}"));
@@ -515,7 +515,7 @@ pub(crate) fn save_thread(
 
 #[tauri::command]
 pub(crate) fn rename_thread(path: String, new_title: String) -> Result<(), String> {
-    guard_managed_path(&path, "/_threads/", ".md")?;
+    guard_managed_path(&path, "/threads/", ".md")?;
     let p = PathBuf::from(&path);
     if !p.exists() {
         return Err(format!("thread not found: {path}"));
@@ -570,7 +570,7 @@ pub(crate) fn rename_thread(path: String, new_title: String) -> Result<(), Strin
 
 #[tauri::command]
 pub(crate) fn delete_thread(path: String) -> Result<(), String> {
-    guard_managed_path(&path, "/_threads/", ".md")?;
+    guard_managed_path(&path, "/threads/", ".md")?;
     let p = PathBuf::from(&path);
     if !p.exists() {
         return Err(format!("thread not found: {path}"));
