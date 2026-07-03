@@ -509,14 +509,6 @@ export default function App() {
         // Auto-enter DEMO with the bundled sample vault so a fresh (or healed)
         // launch lands in a populated app, never an empty/broken vault. Seeds
         // the bundled resources/sample-vault and marks it demo. (F3 auto-demo.)
-        const seedDemo = async () => {
-          const path = await invoke<string>("import_sample_vault");
-          await invoke("engine_appmode_set", { mode: "demo", vault: path }).catch(() => {});
-          await invoke("engine_appmode_mark_demo", { vault: path }).catch(() => {});
-          setVaultPath(path);
-          lsSet(LS.vault, path);
-          setSelectedDomain(null);
-        };
         // Check the persisted app mode. Production mode with a live vault is
         // the only case where we skip demo - the user explicitly set it up.
         // Demo mode (or no mode yet) always re-seeds so the user always lands
@@ -568,10 +560,13 @@ export default function App() {
             return;
           }
         }
-        // No owned profile (or its vault is gone) - re-seed the bundled sample
-        // vault so every launch starts with fresh, up-to-date sample data.
-        await seedDemo();
-      } catch { /* fall through to the VaultWizard if seeding fails */ }
+        // No owned profile (or its vault is gone). Per user preference we no
+        // longer auto-import the bundled sample vault on a fresh install (it read
+        // as the user's own data and caused confusion). Land on the VaultWizard so
+        // the user points at their own folder. Sample data stays available on
+        // demand from Settings -> Workspace.
+        setVaultPath(null);
+      } catch { /* fall through to the VaultWizard if setup fails */ }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1480,27 +1475,9 @@ export default function App() {
     }
   }
 
-  // Import the bundled sample vault (fully-populated demo domains) so the
-  // user can explore every feature without creating anything.
-  async function loadSample() {
-    try {
-      const path = await invoke<string>("import_sample_vault");
-      // Loading the sample vault means you're exploring - mark demo mode so the
-      // Settings banner offers the switch to production. (F3) Tag the vault as a
-      // demo sandbox so the switch-to-production flow can safely clear it later.
-      await invoke("engine_appmode_set", { mode: "demo", vault: path }).catch(() => {});
-      await invoke("engine_appmode_mark_demo", { vault: path }).catch(() => {});
-      setVaultPath(path);
-      lsSet(LS.vault, path);
-      setSelectedDomain(null);
-    } catch (e) {
-      console.error("import_sample_vault failed", e);
-    }
-  }
-
   if (isBrowser() && !webAuthed) return <WebLogin onAuthed={() => setWebAuthed(true)} />;
   if (!isBrowser() && (lockSet || vaultEncrypted) && !unlocked) return <LockScreen vault={vaultPath} encrypted={vaultEncrypted} onUnlock={() => setUnlocked(true)} />;
-  if (!vaultPath) return <VaultWizard onPick={pickVault} onLoadSample={loadSample} />;
+  if (!vaultPath) return <VaultWizard onPick={pickVault} />;
 
   // The left Sidebar is shared across every mode (chat, Work, Editor) so the
   // Work/Editor toggle + profile switcher are always present and switching

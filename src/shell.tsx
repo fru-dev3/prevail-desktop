@@ -584,7 +584,7 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
 // ─────────────────────────────────────────────────────────────────────
 // App root - vault picker, sidebar, tabs.
 
-export function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLoadSample: () => void }) {
+export function VaultWizard({ onPick }: { onPick: () => void }) {
   // Staggered entrance for the center column.
   const container = { hidden: {}, show: { transition: { staggerChildren: 0.09, delayChildren: 0.12 } } };
   const item = {
@@ -718,7 +718,9 @@ export function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLo
           ))}
         </motion.div>
 
-        {/* CTA - point to a vault, or import bundled sample data */}
+        {/* CTA - point to a vault. Sample data is available later from
+            Settings > Workspace; we don't push it here (it read as the user's own
+            data and caused confusion on a fresh install). */}
         <motion.div variants={item} className="mt-9 flex flex-wrap items-center justify-center gap-3">
           <motion.button
             onClick={onPick}
@@ -728,18 +730,10 @@ export function VaultWizard({ onPick, onLoadSample }: { onPick: () => void; onLo
           >
             <Folder className="h-4 w-4" /> Pick your vault folder
           </motion.button>
-          <motion.button
-            onClick={onLoadSample}
-            whileHover={{ y: -2, scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="inline-flex items-center gap-2.5 rounded-xl border border-accent-border bg-accent-soft px-7 py-3.5 text-[15px] font-semibold text-accent transition-colors hover:bg-accent hover:text-background"
-          >
-            <Sparkles className="h-4 w-4" /> Load sample data
-          </motion.button>
         </motion.div>
 
         <motion.div variants={item} className="mt-5 text-xs text-text-muted">
-          Sample data drops in a fully-populated vault so you can explore every feature.
+          Your vault is a folder on your Mac. Want to explore first? Load sample data anytime from Settings, Workspace.
           <span className="mx-2 opacity-40">·</span>
           <span className="font-mono">v{APP_VERSION} · stays on your Mac</span>
         </motion.div>
