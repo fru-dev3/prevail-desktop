@@ -548,14 +548,15 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
         })()}
       </section>
 
-      {/* Playbooks */}
+      {/* Playbooks - a playbook is a multi-app orchestrated job (the only
+          cross-app synthesizer). It overlaps Loops, ships with no authoring UI,
+          and had no content in packaged builds, so the empty "No playbooks yet"
+          card was pure noise. Only surface this section when playbooks actually
+          exist; the engine still runs them (and Loops can invoke one). */}
+      {playbooks.length > 0 && (
       <section>
         <div className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">Playbooks</div>
-        {playbooks.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border bg-surface p-5 text-center text-sm text-text-secondary">
-            No playbooks available yet.
-          </div>
-        ) : (
+        {(
           <div className="space-y-2">
             {playbooks.map((pb) => {
               const isRunning = running?.id === pb.id;
@@ -583,6 +584,7 @@ export function AutonomyPanel({ vaultPath }: { vaultPath: string }) {
           </div>
         )}
       </section>
+      )}
 
       <RecentActivity vaultPath={vaultPath} />
     </div>
