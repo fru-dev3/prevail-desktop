@@ -1,7 +1,7 @@
 // Chat-display leaf components extracted from App.tsx: ChatBubble (one rendered
 // turn), MessageList (windowed transcript), DomainStatusBar, and DomainHome.
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, ListPlus, NotebookPen, Pin, Repeat, SlidersHorizontal, Sparkles, User } from "lucide-react";
+import { ArrowRight, Check, ListPlus, NotebookPen, Pin, Repeat, SlidersHorizontal, Sparkles, User } from "lucide-react";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES } from "./constants";
 import { titleCase } from "./format";
@@ -358,6 +358,21 @@ export function DomainStatusBar({
   // advisory text reply. Off by default — a normal chat stays a normal chat.
   const [act, setAct]             = useState(false);
   const [autoMode, setAutoMode]   = useState(() => getPref(`prevail.domain.${domain}.autoMode`, "smart"));
+  // Google accounts: which connected profile(s) Act mode acts for. Multi-select
+  // so you can work across two inboxes in one send (the agent labels results by
+  // account). Persisted per-domain; read back in chatpanel.send() for Act runs.
+  interface GProfile { label: string; email: string | null; status: string }
+  const [gProfiles, setGProfiles] = useState<GProfile[]>([]);
+  const [gSelected, setGSelected] = useState<string[]>(() => {
+    try { return JSON.parse(getPref(`prevail.domain.${domain}.googleAccounts`, "[]")) as string[]; } catch { return []; }
+  });
+  const toggleGAccount = (label: string) => {
+    setGSelected((prev) => {
+      const next = prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label];
+      setPref(`prevail.domain.${domain}.googleAccounts`, JSON.stringify(next));
+      return next;
+    });
+  };
   // Incognito now lives in Modes (a plain model, none of your context sent). The
   // master switch (Settings: Privacy) can force it on globally.
   const [incognito, setIncognito] = useState(() => incognitoActive(surface));
@@ -379,6 +394,7 @@ export function DomainStatusBar({
     setAuto(getDomainToggle(domain, "auto", false));
     setAct(getDomainToggle(domain, "act", false));
     setAutoMode(getPref(`prevail.domain.${domain}.autoMode`, "smart"));
+    try { setGSelected(JSON.parse(getPref(`prevail.domain.${domain}.googleAccounts`, "[]")) as string[]); } catch { setGSelected([]); }
   }, [domain]);
   // The per-domain modes (web/save/serendipity/auto) live in a popover so the
   // composer row stays focused on the per-prompt Framework + Lens controls.
@@ -389,6 +405,22 @@ export function DomainStatusBar({
     const onDoc = (e: MouseEvent) => { if (modesRef.current && !modesRef.current.contains(e.target as Node)) setModesOpen(false); };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
+  }, [modesOpen]);
+  // Load connected Google profiles when the Modes popover opens (cheap, cached
+  // by gws). Only accounts that are actually connected / have an email show up.
+  useEffect(() => {
+    if (!modesOpen) return;
+    let alive = true;
+    invoke<Array<{ label?: string; email?: string | null; status?: string }>>("google_profiles")
+      .then((ps) => {
+        if (!alive) return;
+        const rows = (ps ?? [])
+          .filter((p) => p && (p.status === "connected" || !!p.email) && !!p.label)
+          .map((p) => ({ label: String(p.label), email: p.email ?? null, status: String(p.status ?? "unknown") }));
+        setGProfiles(rows);
+      })
+      .catch(() => { /* no gws / no accounts — section just stays hidden */ });
+    return () => { alive = false; };
   }, [modesOpen]);
   // Bunker Mode forbids any request leaving the device, so Web access can never
   // be on while it's active. We show it off and locked regardless of the stored
@@ -474,6 +506,38 @@ export function DomainStatusBar({
                 desc="Log replies so you can re-read them later." />
               <ModeRow label="Incognito" on={incogOn} disabled={globalIncognito} onClick={toggleIncognito}
                 desc={globalIncognito ? "Forced on in Privacy settings." : "Plain model: none of your context is sent."} />
+              {gProfiles.length > 0 && (
+                <div className="mt-1 border-t border-border/60 px-2.5 pb-1 pt-2">
+                  <div className="mb-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Google accounts</div>
+                  <div className="mb-1.5 text-[11px] leading-snug text-text-muted">
+                    {act ? "Which account(s) Act mode uses for Google. Pick more than one to work across inboxes in one send." : "Turn on Act mode to have this domain act for the account(s) you pick here."}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {gProfiles.map((p) => {
+                      const on = gSelected.includes(p.label);
+                      const who = p.email || p.label;
+                      const initial = (who || "?").charAt(0).toUpperCase();
+                      return (
+                        <button
+                          key={p.label}
+                          type="button"
+                          onClick={() => toggleGAccount(p.label)}
+                          title={`${p.label}${p.email ? ` — ${p.email}` : ""}`}
+                          className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-left transition-colors ${
+                            on ? "border-accent-border bg-accent-soft" : "border-border bg-surface hover:bg-surface-warm"
+                          }`}
+                        >
+                          <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                            on ? "bg-accent text-background" : "bg-surface-warm text-text-secondary"
+                          }`}>{initial}</span>
+                          <span className="min-w-0 flex-1 truncate text-[12px] text-text-primary">{who}</span>
+                          {on && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {auto && (
                 <div className="flex items-center justify-between gap-2 px-3 py-2">
                   <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Trigger</span>
