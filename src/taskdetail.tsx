@@ -4,20 +4,27 @@
 // The one-line _tasks.md record stays canonical; the rich parts live in the
 // per-domain sidecar (_task_details.json) via task_detail_* commands.
 import { useCallback, useEffect, useState } from "react";
-import { Bot, Flag, MessageSquarePlus, Sparkles, User, X } from "lucide-react";
+import { Bot, Flag, Loader2, MessageSquarePlus, Sparkles, User, X, Zap } from "lucide-react";
 import { invoke } from "./bridge";
 import { titleCase, relTime } from "./format";
 import { VENDOR_BRAND } from "./constants";
-import type { BoardTask } from "./types";
+import { HarnessPicker } from "./harnesspicker";
+import type { BoardTask, CliInfo } from "./types";
 
 type Detail = { description?: string; comments?: { ts: number; text: string; author?: string }[] };
 
-export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
+export function TaskDetailPanel({ task, vaultPath, onClose, onChanged, harnesses = [], delegating = false, onDelegate }: {
   task: BoardTask;
   vaultPath: string;
   onClose: () => void;
   onChanged: () => void;
+  // Connected agent oracles (Hermes/Pi/OpenClaw/OpenCode) + the built-in
+  // Prevail agent, and the action that hands this task to one.
+  harnesses?: CliInfo[];
+  delegating?: boolean;
+  onDelegate?: (cli: string) => void;
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [detail, setDetail] = useState<Detail>({});
   const [desc, setDesc] = useState("");
   const [comment, setComment] = useState("");
@@ -161,10 +168,25 @@ export function TaskDetailPanel({ task, vaultPath, onClose, onChanged }: {
             />
           </div>
 
-          {/* Discuss with AI */}
-          <button onClick={discuss} className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
-            <Sparkles className="h-3.5 w-3.5" /> Discuss with AI
-          </button>
+          {/* Discuss with AI + Delegate to an agent oracle */}
+          <div className="relative mt-3 flex flex-wrap items-center gap-2">
+            <button onClick={discuss} className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background">
+              <Sparkles className="h-3.5 w-3.5" /> Discuss with AI
+            </button>
+            {onDelegate && (
+              <button
+                onClick={() => setPickerOpen((v) => !v)}
+                disabled={delegating}
+                title="Hand this task to an agent (Prevail, or a connected oracle like Hermes, Pi, OpenClaw). It runs the task and posts the result here."
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-60"
+              >
+                {delegating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />} {delegating ? "Running…" : "Delegate to agent"}
+              </button>
+            )}
+            {pickerOpen && onDelegate && (
+              <HarnessPicker harnesses={harnesses} onPick={(cli) => { setPickerOpen(false); onDelegate(cli); }} onClose={() => setPickerOpen(false)} />
+            )}
+          </div>
 
           {/* Comments / activity */}
           <div className="mt-5">

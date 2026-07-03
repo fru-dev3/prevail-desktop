@@ -959,6 +959,9 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
             vaultPath={vaultPath}
             onClose={() => setOpenId(null)}
             onChanged={reload}
+            harnesses={harnesses}
+            delegating={!!t.id && agentRunning.has(t.id)}
+            onDelegate={(cli) => runWithAgent(t, cli)}
           />
         ) : null;
       })()}
