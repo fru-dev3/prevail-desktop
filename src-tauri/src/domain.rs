@@ -447,6 +447,62 @@ pub(crate) fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
             }
         }
     }
+
+    // App-level skills ("the brother level"): apps live under data/apps/<id> as
+    // siblings of domains, each with a skills/ folder (flat <id>.md files or
+    // <id>/SKILL.md subdirs). Surface them in /skills too, tagged by app id, so
+    // an app's skills are reachable from chat like a domain's.
+    let apps_root = crate::paths::data_root(&vault).join("apps");
+    if let Ok(apps) = fs::read_dir(&apps_root) {
+        for app in apps.flatten() {
+            let app_dir = app.path();
+            if !app_dir.is_dir() {
+                continue;
+            }
+            let app_id = app.file_name().to_string_lossy().to_string();
+            if app_id.starts_with('.') {
+                continue;
+            }
+            let skills_dir = app_dir.join("skills");
+            let Ok(entries) = fs::read_dir(&skills_dir) else { continue };
+            for entry in entries.flatten() {
+                let ep = entry.path();
+                let ename = entry.file_name().to_string_lossy().to_string();
+                if ename.starts_with('.') {
+                    continue;
+                }
+                // A skill is either <name>/SKILL.md (dir) or <name>.md (file).
+                let (name, skill_path) = if ep.is_dir() {
+                    (ename.clone(), ep.clone())
+                } else if ename.ends_with(".md") {
+                    (ename.trim_end_matches(".md").to_string(), ep.clone())
+                } else {
+                    continue;
+                };
+                let mut description: Option<String> = None;
+                let candidates: Vec<PathBuf> = if ep.is_dir() {
+                    ["SKILL.md", "README.md", "skill.md"].iter().map(|c| ep.join(c)).collect()
+                } else {
+                    vec![ep.clone()]
+                };
+                for f in &candidates {
+                    if let Ok(s) = read_to_string_retry(f) {
+                        if let Some(desc) = extract_skill_description(&s) {
+                            description = Some(desc);
+                            break;
+                        }
+                    }
+                }
+                out.push(SkillEntry {
+                    domain: app_id.clone(),
+                    name,
+                    path: skill_path.to_string_lossy().to_string(),
+                    description,
+                });
+            }
+        }
+    }
+
     out.sort_by(|a, b| a.domain.cmp(&b.domain).then(a.name.cmp(&b.name)));
     Ok(out)
 }
