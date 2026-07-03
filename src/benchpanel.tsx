@@ -1170,6 +1170,9 @@ export function BenchRunConfig({
   // Domain scope list expanded by default (still collapsible), so the domains are
   // visible without a click.
   const [domScopeOpen, setDomScopeOpen] = useState(true);
+  // Review&Run: show every contender tile instead of capping the lineup, so a
+  // big selection can be fully inspected (the old "+N more" tile was a dead end).
+  const [showAllContenders, setShowAllContenders] = useState(false);
 
   // ── Saved Benchmark Suites (models + domains + mode), the one reusable unit ──
   const suites = useSuites();
@@ -1583,8 +1586,14 @@ export function BenchRunConfig({
         ) : (() => {
           const withQ = allDomains.filter((d) => (questionCounts[d] ?? 0) > 0).sort((a, b) => (questionCounts[b] ?? 0) - (questionCounts[a] ?? 0));
           const withoutQ = allDomains.filter((d) => (questionCounts[d] ?? 0) === 0);
+          // scope.size === 0 means "all domains" - every domain is included.
+          // Reflect that on the chips (a soft accent "included" look) so All mode
+          // is visibly distinct from "nothing selected", and distinct from an
+          // explicit single pick (hard accent fill).
+          const allMode = scope.size === 0;
           const pill = (d: string) => {
             const on = scope.has(d);
+            const included = on || allMode; // covered by this run
             const Icon = domainIcon(d);
             const count = questionCounts[d] ?? 0;
             return (
@@ -1595,15 +1604,18 @@ export function BenchRunConfig({
                 className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-all ${
                   on
                     ? "border-accent bg-accent font-semibold text-background shadow-sm"
-                    : count === 0
-                      ? "border-border-subtle bg-background text-text-muted/60 hover:border-accent-border/60 hover:bg-accent-soft/50 hover:text-accent"
-                      : "border-border bg-background text-text-secondary hover:-translate-y-0.5 hover:border-accent-border hover:bg-accent-soft hover:text-accent hover:shadow-sm"
+                    : allMode
+                      ? "border-accent-border bg-accent-soft text-accent hover:-translate-y-0.5 hover:border-accent hover:shadow-sm"
+                      : count === 0
+                        ? "border-border-subtle bg-background text-text-muted/60 hover:border-accent-border/60 hover:bg-accent-soft/50 hover:text-accent"
+                        : "border-border bg-background text-text-secondary hover:-translate-y-0.5 hover:border-accent-border hover:bg-accent-soft hover:text-accent hover:shadow-sm"
                 }`}
               >
-                {Icon && <Icon className="h-3 w-3" />}
+                {included && <Check className="h-3 w-3" />}
+                {Icon && !included && <Icon className="h-3 w-3" />}
                 {titleCase(d)}
                 {count > 0 && (
-                  <span className={`ml-0.5 rounded-full px-1 text-[10px] ${on ? "bg-background/25 text-background" : "bg-surface-warm text-text-muted"}`}>{count}</span>
+                  <span className={`ml-0.5 rounded-full px-1 text-[10px] ${on ? "bg-background/25 text-background" : allMode ? "bg-accent/15 text-accent" : "bg-surface-warm text-text-muted"}`}>{count}</span>
                 )}
               </button>
             );
@@ -1622,10 +1634,15 @@ export function BenchRunConfig({
               <div className="ml-[7px] mt-2 space-y-2 border-l border-border-subtle/70 pl-4">
                 <div className="flex flex-wrap gap-1.5">
                   <button
-                    onClick={() => { setDomainsTouched(true); scope.forEach((d) => toggleScope(d)); }}
+                    onClick={() => { setDomainsTouched(true); applyScope([]); }}
                     title="Run across all domains"
-                    className="rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] text-text-muted transition-all hover:-translate-y-0.5 hover:border-accent-border hover:bg-accent-soft hover:text-accent hover:shadow-sm"
+                    className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-all ${
+                      allMode
+                        ? "border-accent bg-accent font-semibold text-background shadow-sm"
+                        : "border-border bg-background text-text-muted hover:-translate-y-0.5 hover:border-accent-border hover:bg-accent-soft hover:text-accent hover:shadow-sm"
+                    }`}
                   >
+                    {allMode && <Check className="h-3 w-3" />}
                     All
                   </button>
                   {withQ.map(pill)}
@@ -1938,15 +1955,17 @@ export function BenchRunConfig({
           return <span className="inline-flex items-center gap-1 font-mono text-[10px] text-warn"><Circle className="h-2.5 w-2.5 fill-current" /> offline</span>;
         };
 
-        // One contender card. `hero` enlarges the logo/type for the 1 and 2 layouts.
+        // One contender card. `hero` enlarges the logo/type for the 1 and 2
+        // layouts. The compact (lineup) card is deliberately small - smaller
+        // icon, no blurb - so many contenders fit without needing "+N more".
         const ContenderCard = ({ c, hero = false }: { c: Contender; hero?: boolean }) => (
-          <div className={`flex min-w-0 flex-col items-center rounded-2xl border border-border bg-surface-warm/50 text-center ${hero ? "gap-2.5 p-5" : "gap-2 p-4"}`}>
-            <ProviderMark vendor={c.vendor} size={hero ? 52 : 40} />
-            <div className="min-w-0">
-              <div className={`truncate font-semibold text-text-primary ${hero ? "text-[15px]" : "text-[13px]"}`}>{c.label}</div>
-              <div className="truncate font-mono text-[10px] uppercase tracking-wider text-text-muted">{c.provider}</div>
+          <div className={`flex min-w-0 flex-col items-center rounded-2xl border border-border bg-surface-warm/50 text-center ${hero ? "gap-2.5 p-5" : "gap-1.5 p-2.5"}`}>
+            <ProviderMark vendor={c.vendor} size={hero ? 52 : 28} />
+            <div className="min-w-0 w-full">
+              <div className={`truncate font-semibold text-text-primary ${hero ? "text-[15px]" : "text-[12px]"}`}>{c.label}</div>
+              <div className="truncate font-mono text-[9px] uppercase tracking-wider text-text-muted">{c.provider}</div>
             </div>
-            {c.blurb && <div className="line-clamp-2 font-mono text-[10px] leading-relaxed text-text-secondary">{c.blurb}</div>}
+            {hero && c.blurb && <div className="line-clamp-2 font-mono text-[10px] leading-relaxed text-text-secondary">{c.blurb}</div>}
             <StatusDot status={c.status} />
           </div>
         );
@@ -2017,16 +2036,38 @@ export function BenchRunConfig({
                   <ContenderCard c={contenders[1]} hero />
                 </div>
               ) : (
-                // Lineup / bracket row: fill the width, cap the visible tiles.
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                  {contenders.slice(0, 8).map((c) => <ContenderCard key={c.key} c={c} />)}
-                  {n > 8 && (
-                    <div className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-border bg-surface-warm/30 p-4 text-center">
-                      <span className="font-display text-xl font-bold text-accent">+{n - 8}</span>
-                      <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">more</span>
+                // Lineup / bracket row. Tighter grid (up to 6 across) so more
+                // fit, and the "+N more" tile now EXPANDS the full lineup instead
+                // of being a dead end. Collapsed cap is a round grid (10).
+                (() => {
+                  const CAP = 10;
+                  const visible = showAllContenders ? contenders : contenders.slice(0, CAP);
+                  return (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-6">
+                        {visible.map((c) => <ContenderCard key={c.key} c={c} />)}
+                        {!showAllContenders && n > CAP && (
+                          <button
+                            onClick={() => setShowAllContenders(true)}
+                            title={`Show all ${n} contenders`}
+                            className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-border bg-surface-warm/30 p-4 text-center transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent"
+                          >
+                            <span className="font-display text-xl font-bold text-accent">+{n - CAP}</span>
+                            <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">show all</span>
+                          </button>
+                        )}
+                      </div>
+                      {showAllContenders && n > CAP && (
+                        <button
+                          onClick={() => setShowAllContenders(false)}
+                          className="font-mono text-[10px] uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
+                        >
+                          Show fewer
+                        </button>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()
               )}
             </div>
 
