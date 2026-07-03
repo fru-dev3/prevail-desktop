@@ -228,17 +228,22 @@ fn context_for_root(root: PathBuf, extra_base: Option<PathBuf>, domain_label: &s
         if !p.exists() { return None; }
         read_to_string_retry(&p).ok()
     };
-    // v2 layout first (_state.md, written by the distill daemon), v1 fallback
-    // (state.md). The panel showed "no state.md found" forever because it only
-    // knew the v1 name while everything else wrote v2.
-    let state = read(root.join("_state.md")).or_else(|| read(root.join("state.md")));
+    // Dual-read across layouts, newest first: v4 (memory/state.md), v2
+    // (_state.md, the distill daemon's name), v1 (state.md). Preferring the v4
+    // path means a migrated vault reads correctly; the fallbacks keep every
+    // un-migrated vault working unchanged.
+    let state = read(root.join("memory").join("state.md"))
+        .or_else(|| read(root.join("_state.md")))
+        .or_else(|| read(root.join("state.md")));
     // Curated decisions: the journal distiller's file when present, else the
     // v1 root file, else the full _decisions.jsonl ledger rendered readable
     // (the same ledger "Recent decisions" tails, but complete).
     let decisions = read(root.join("_journal").join("decisions.md"))
         .or_else(|| read(root.join("decisions.md")))
         .or_else(|| {
-            let ledger = read(root.join("_decisions.jsonl"))
+            // v4 memory/decisions.jsonl first, then the legacy ledger locations.
+            let ledger = read(root.join("memory").join("decisions.jsonl"))
+                .or_else(|| read(root.join("_decisions.jsonl")))
                 .or_else(|| extra_base.as_ref().and_then(|b| read(b.join("_decisions.jsonl"))))?;
             let lines: Vec<String> = ledger
                 .lines()
@@ -267,6 +272,7 @@ fn context_for_root(root: PathBuf, extra_base: Option<PathBuf>, domain_label: &s
     // entries. For General it may exist at BOTH the root and build/ (after a tidy),
     // so read every base and merge. Strip duplicate "# Journal" headers on join.
     let read_journal_at = |base: &PathBuf| -> Option<String> {
+        if let Some(j) = read(base.join("memory").join("journal.md")) { return Some(j); } // v4
         if let Some(j) = read(base.join("_journal.md")) { return Some(j); }
         let dir = base.join("_journal");
         if !dir.is_dir() { return None; }
@@ -336,7 +342,7 @@ fn context_for_root(root: PathBuf, extra_base: Option<PathBuf>, domain_label: &s
     // `skills/` (CLI daemon distill/scaffold). Reading only `_skills/` before
     // made any CLI-generated skill invisible in the domain's Skills tab.
     let mut skills: Vec<SkillEntry> = Vec::new();
-    for sub in &["_skills", "skills"] {
+    for sub in &["memory/skills", "_skills", "skills"] {
         let skills_dir = root.join(sub);
         if !skills_dir.is_dir() { continue; }
         let Ok(it) = read_dir_retry(&skills_dir) else { continue };
@@ -452,7 +458,7 @@ pub(crate) fn scan_skills(vault: String) -> Result<Vec<SkillEntry>, String> {
         // desktop's skill_create) and `skills/` (CLI daemon distill/scaffold).
         // Before, only `_skills/` was read, so any skill the CLI generated into
         // `skills/` never appeared in the Skills tab or /skills autocomplete.
-        for sub in &["_skills", "skills"] {
+        for sub in &["memory/skills", "_skills", "skills"] {
             let skills_dir = domain_path.join(sub);
             if !skills_dir.is_dir() {
                 continue;
