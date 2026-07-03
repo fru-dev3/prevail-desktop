@@ -683,7 +683,12 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       const d = score(a) - score(b);
       return d !== 0 ? d : (a.name || "").localeCompare(b.name || "");
     });
-    return { shown: ranked, total: ranked.length, searching, fullCount: deduped.length };
+    // Perf: the catalog is ~1500 apps; rendering every match on each keystroke is
+    // the dominant cost while searching. Cap the rendered rows (the best-ranked
+    // ones surface first); `total` still reports the true match count so the UI
+    // can say "showing N of M - refine to narrow."
+    const RENDER_CAP = 80;
+    return { shown: ranked.slice(0, RENDER_CAP), total: ranked.length, capped: ranked.length > RENDER_CAP, searching, fullCount: deduped.length };
   }, [apps, catalog, query, lane, isPinnedApp]);
 
   const liveCount = directApps.filter((a) => appStatus(a) === "connected").length;
