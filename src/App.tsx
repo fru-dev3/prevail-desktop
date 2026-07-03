@@ -21,6 +21,7 @@ const CouncilPanel = lazy(() => import("./councilpanel").then((m) => ({ default:
 const SettingsPanel = lazy(() => import("./settingspanel").then((m) => ({ default: m.SettingsPanel })));
 const WorkPanel = lazy(() => import("./workpanel").then((m) => ({ default: m.WorkPanel })));
 const BenchmarkPanel = lazy(() => import("./benchpanel").then((m) => ({ default: m.BenchmarkPanel })));
+const RetrospectPanel = lazy(() => import("./retrospectpanel").then((m) => ({ default: m.RetrospectPanel })));
 import { Sidebar } from "./sidebar";
 import { useAppearance, useFrameworkLens } from "./hooks";
 import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
@@ -1808,6 +1809,15 @@ export default function App() {
                   >
                     <Swords className="h-3.5 w-3.5" /> Arena
                   </button>
+                  <button
+                    onClick={() => setTab("retrospect")}
+                    title="Retrospect: where your attention went, by day / week / month / year"
+                    className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
+                      tab === "retrospect" ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <span className="text-[13px] leading-none">↺</span> Retrospect
+                  </button>
                 </>
               )}
               <DomainActionsMenu
@@ -1923,6 +1933,13 @@ export default function App() {
                   vaultPath={vaultPath}
                   initialDomain={selectedDomain || benchScope}
                 />
+              </div>
+            )}
+            {/* Retrospect - cross-domain, full screen. Mounted on demand (no
+                in-flight state to preserve); reads the intent ledger rollup. */}
+            {tab === "retrospect" && (
+              <div className="h-full">
+                <RetrospectPanel vaultPath={vaultPath} />
               </div>
             )}
             </Suspense>

@@ -45,6 +45,7 @@ mod loops;
 mod activity;
 mod ingestion;
 mod runtime_connectors;
+mod retrospect;
 mod composio;
 mod nango;
 mod reminders;
@@ -546,6 +547,7 @@ pub fn run() {
             google::google_cli_status,
             google::google_profiles,
             runtime_connectors::discover_runtime_connectors,
+            retrospect::retrospect_rollup,
             google::google_profile_login,
             google::google_profile_remove,
             google::google_scaffold,
