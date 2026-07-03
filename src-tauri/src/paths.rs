@@ -30,6 +30,29 @@ pub(crate) fn data_root(vault: &str) -> PathBuf {
     }
 }
 
+// v4 layout (source/ · memory/ · .system/). A domain is v4 once the migrator has
+// dropped this marker; until then every vault reads/writes the legacy flat names,
+// so this is a no-op on un-migrated vaults.
+pub(crate) const V4_MARKER: &str = ".prevail-layout-v4";
+
+pub(crate) fn is_v4_domain(domain_dir: &Path) -> bool {
+    domain_dir.join(V4_MARKER).exists()
+}
+
+/// The path a logical content file lives at, honoring the domain's layout: the
+/// v4 sub-path on a migrated domain, else the legacy name. Used by BOTH readers
+/// and writers so a v4 domain round-trips consistently (read new, write new).
+/// Creates the v4 parent dir on demand so a writer can target it safely.
+pub(crate) fn v4_content_path(domain_dir: &Path, v4_rel: &str, legacy: &str) -> PathBuf {
+    if is_v4_domain(domain_dir) {
+        let p = domain_dir.join(v4_rel);
+        if let Some(parent) = p.parent() { let _ = std::fs::create_dir_all(parent); }
+        p
+    } else {
+        domain_dir.join(legacy)
+    }
+}
+
 // B2-12 (Phase 1, additive — no behavior change yet): the `build/` container for
 // supporting/runtime files (ledgers, _meta, _threads, benchmark, usage, …).
 // `runtime_path` PREFERS <vault>/build/<name> when build/ exists, else falls back
@@ -205,4 +228,27 @@ pub(crate) fn guard_managed_path(path: &str, must_contain: &str, ext: &str) -> R
         return Err("path resolves outside a Prevail-managed location".into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod v4_path_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn resolves_legacy_until_marked_then_v4() {
+        let d = std::env::temp_dir().join(format!("prevail-v4path-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        // No marker -> legacy path, unchanged behavior.
+        assert_eq!(v4_content_path(&d, "memory/state.md", "_state.md"), d.join("_state.md"));
+        assert!(!is_v4_domain(&d));
+        // Marked -> v4 path, and the parent (memory/) is created so a writer can use it.
+        fs::write(d.join(V4_MARKER), "1").unwrap();
+        assert!(is_v4_domain(&d));
+        let p = v4_content_path(&d, "memory/state.md", "_state.md");
+        assert_eq!(p, d.join("memory").join("state.md"));
+        assert!(d.join("memory").is_dir());
+        let _ = fs::remove_dir_all(&d);
+    }
 }

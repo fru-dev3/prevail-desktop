@@ -245,8 +245,11 @@ async fn distill_dir(target: &DistillTarget, cfg: &DistillConfig) -> Result<u64,
         return Ok(0);
     }
 
-    let memory_path = content_dir.join("_memory.md");
-    let state_path = content_dir.join("_state.md");
+    // v4-aware: on a migrated domain write memory/memory.md + memory/state.md;
+    // on a legacy domain the old flat names. Reads use the same resolver so a
+    // v4 domain round-trips consistently.
+    let memory_path = crate::paths::v4_content_path(&content_dir, "memory/memory.md", "_memory.md");
+    let state_path = crate::paths::v4_content_path(&content_dir, "memory/state.md", "_state.md");
     let existing_memory = crate::read_to_string_retry(&memory_path).unwrap_or_default();
     let existing_state = crate::read_to_string_retry(&state_path).unwrap_or_default();
     let domain_label = content_dir
@@ -714,8 +717,10 @@ pub async fn build_domain_state(
     }
 
     let domain_label = domain.clone().unwrap_or_else(|| "General".into());
-    let existing_memory = crate::read_to_string_retry(content_dir.join("_memory.md")).unwrap_or_default();
-    let existing_state = crate::read_to_string_retry(content_dir.join("_state.md")).unwrap_or_default();
+    let mem_path = crate::paths::v4_content_path(&content_dir, "memory/memory.md", "_memory.md");
+    let st_path = crate::paths::v4_content_path(&content_dir, "memory/state.md", "_state.md");
+    let existing_memory = crate::read_to_string_retry(&mem_path).unwrap_or_default();
+    let existing_state = crate::read_to_string_retry(&st_path).unwrap_or_default();
     let ideal = content_dir.parent().map(crate::ideal_state_preamble).unwrap_or_default();
     let prompt = format!(
         "{}{}",
@@ -731,7 +736,7 @@ pub async fn build_domain_state(
 
     let mem_body = parsed.memory.clone().unwrap_or_else(|| out.trim().to_string());
     let memory = format!("# Memory\n\n<!-- prevail:distilled -->\n\n{}\n", mem_body.trim());
-    write_atomic(&content_dir.join("_memory.md"), &memory).map_err(|e| format!("write _memory.md: {e}"))?;
+    write_atomic(&mem_path, &memory).map_err(|e| format!("write memory: {e}"))?;
 
     let mut built_state = false;
     if let Some(state_body) = parsed.state.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
@@ -740,7 +745,7 @@ pub async fn build_domain_state(
             title_case_label(&domain_label),
             state_body,
         );
-        let _ = write_atomic(&content_dir.join("_state.md"), &doc);
+        let _ = write_atomic(&st_path, &doc);
         built_state = true;
     }
     if !parsed.decisions.is_empty() {
