@@ -479,7 +479,7 @@ export function DomainContextDrawer({
             } />
             <Section keyName="skills" title="Skills" count={ctx.skills.length} body={
               ctx.skills.length === 0 ? (
-                <div className="text-xs text-text-muted">drop a folder under <code className="text-accent">{titleCase(domain)}/skills/</code> with a SKILL.md.</div>
+                <div className="text-xs text-text-muted">drop a folder under <code className="text-accent">{titleCase(domain)}/_skills/</code> with a SKILL.md.</div>
               ) : (
                 <ul className="space-y-1">
                   {ctx.skills.map((s) => (
@@ -1148,7 +1148,7 @@ export function DomainPrefsPanel({
         </button>
         {skillsOpen && (skills.length === 0 ? (
           <div className="mt-3 ml-5 rounded border border-dashed border-border bg-background p-4 text-sm text-text-muted">
-            No skills under <code className="text-accent">{titleCase(domain)}/skills/</code> yet.
+            No skills under <code className="text-accent">{titleCase(domain)}/_skills/</code> yet.
           </div>
         ) : (
           <ul className="mt-3 ml-5 flex flex-col gap-1.5 border-l border-border-subtle pl-3">
