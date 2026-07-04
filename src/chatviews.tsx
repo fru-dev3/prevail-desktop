@@ -534,6 +534,7 @@ export function DomainStatusBar({
   fwLens,
   surface = "chat",
   googleInContext = false,
+  googleBound = null,
 }: {
   domain: string | null;
   fwLens: ReturnType<typeof useFrameworkLens>;
@@ -543,6 +544,10 @@ export function DomainStatusBar({
   // The Google account chip only appears once the Google app is actually in the
   // chat's context (dragged/attached) - keeping the composer clean otherwise.
   googleInContext?: boolean;
+  // The attached app instance's account binding (manifest.account.label), when
+  // it has one. A bound app already resolves WHICH identity to act as, so the
+  // chip shows that identity instead of demanding a pick.
+  googleBound?: string | null;
 }) {
   // Hooks must be top-level - initialize state from localStorage once
   // per domain, then keep React state as the source of truth so toggles
@@ -741,19 +746,26 @@ export function DomainStatusBar({
                 here instead of only in the refusal message. */}
             <button
               onClick={() => setGOpen((v) => !v)}
-              title={gProfiles.length > 1 && gSelected.length === 0
+              title={gProfiles.length > 1 && gSelected.length === 0 && !googleBound
                 ? "Multiple Google accounts are connected - pick which one(s) this conversation acts as"
                 : "Choose which Google account(s) this domain uses"}
               className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
                 gOpen
                   ? "border-accent-border bg-accent-soft text-accent"
-                  : gProfiles.length > 1 && gSelected.length === 0
+                  : gProfiles.length > 1 && gSelected.length === 0 && !googleBound
                     ? "border-warn/50 bg-warn/10 text-warn hover:bg-warn/15"
                     : "border-border bg-surface text-text-muted hover:bg-surface-warm hover:text-text-secondary"
               }`}
             >
               {(() => {
                 const sel = gProfiles.filter((p) => gSelected.includes(p.label));
+                // The attached app's own identity binding resolves the account
+                // with no pick: show it (a pick in the popover still overrides).
+                if (sel.length === 0 && googleBound) {
+                  const bp = gProfiles.find((p) => p.label === googleBound);
+                  const who = bp?.email || googleBound;
+                  return (<><span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-background">{(who || "?").charAt(0).toUpperCase()}</span> <span className="normal-case">{who.split("@")[0] || who}</span></>);
+                }
                 if (sel.length === 0 && gProfiles.length > 1) return (<><span className="flex h-4 w-4 items-center justify-center rounded-full bg-warn/20 text-[9px] font-bold text-warn">G</span> Pick account</>);
                 if (sel.length === 0) return (<><span className="flex h-4 w-4 items-center justify-center rounded-full bg-surface-warm text-[9px] font-bold text-text-secondary">G</span> Google</>);
                 if (sel.length === 1) { const who = sel[0].email || sel[0].label; return (<><span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-background">{(who || "?").charAt(0).toUpperCase()}</span> <span className="normal-case">{who.split("@")[0] || who}</span></>); }

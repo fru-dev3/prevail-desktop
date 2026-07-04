@@ -39,4 +39,19 @@ describe("inheritedGoogleAccount", () => {
     expect(inheritedGoogleAccount(["  "], ["work"], true)).toBe("work");
     expect(inheritedGoogleAccount([], ["  ", "home"], true)).toBe("home");
   });
+
+  it("the attached app's own account binding resolves ambiguity (no pick needed)", () => {
+    // The app instance IS one identity (manifest.account): attaching it is
+    // itself the choice, even with several accounts connected.
+    expect(inheritedGoogleAccount([], ["home", "work"], true, "work")).toBe("work");
+  });
+
+  it("an explicit chip pick still overrides the app's binding", () => {
+    expect(inheritedGoogleAccount(["home"], ["home", "work"], true, "work")).toBe("home");
+  });
+
+  it("a binding is ignored when Google is not attached; blank bindings fall through", () => {
+    expect(inheritedGoogleAccount([], ["home", "work"], false, "work")).toBeNull();
+    expect(inheritedGoogleAccount([], ["home", "work"], true, "  ")).toBeNull();
+  });
 });
