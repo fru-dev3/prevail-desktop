@@ -178,7 +178,10 @@ function StepChecklist({ msg, accent }: { msg: ChatMessage; accent: string }) {
         {running ? "Working" : "Steps · verified"} · {steps.length}{failed > 0 ? ` · ${failed} failed` : ""}
         {collapsed && current && (
           <span className="ml-1 inline-flex min-w-0 items-center gap-1.5 normal-case tracking-normal">
-            <span className="pulse-soft inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: accent }} />
+            <span className="relative inline-flex h-1.5 w-1.5 shrink-0">
+              <span className="ping-ring absolute inline-flex h-full w-full rounded-full" style={{ background: accent }} />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
+            </span>
             <span className="truncate text-[11px] text-text-secondary">{current.label} · {elapsedLabel(now - current.startedAt)}…</span>
           </span>
         )}
@@ -379,8 +382,13 @@ export function ChatBubble({
           {stamp && <span className="font-mono text-[10px] text-text-muted/70">· {stamp}</span>}
           {msg.streaming && (
             <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider" style={{ color: accent, background: tint }}>
-              <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
-              {msg.content ? "writing" : <ThinkingWord />}
+              {/* Radiating ping (core dot + expanding ring): unambiguous
+                  "actively working", where a lone blink read as maybe-stalled. */}
+              <span className="relative inline-flex h-1.5 w-1.5">
+                <span className="ping-ring absolute inline-flex h-full w-full rounded-full" style={{ background: accent }} />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
+              </span>
+              <span className="shimmer-text">{msg.content ? "writing" : <ThinkingWord />}</span>
             </span>
           )}
         </div>
