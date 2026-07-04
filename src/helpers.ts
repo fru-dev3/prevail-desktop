@@ -107,12 +107,14 @@ export function domainTogglesKey(domain: string | null, t: DomainToggle): string
 // authenticated account so it acts exactly as the app's own chat would. Given
 // the accounts the user explicitly picked and the list of CONNECTED accounts,
 // return the account label(s) to send as `googleAccount` (comma-joined), or null
-// to leave it unset:
+// to leave it unset. Machine-agnostic: labels are whatever gws profiles exist on
+// this machine, never specific addresses. Never guesses between identities:
 //   - an explicit pick always wins (returned verbatim);
-//   - otherwise, if Google is attached and at least one account is connected,
-//     inherit ONE account: the default profile if it is connected (least
-//     surprising, matches the app chat), else the first connected account (the
-//     domain-chat fix for a user who only authorized a labeled account);
+//   - otherwise, if Google is attached and EXACTLY ONE account is connected,
+//     inherit it (unambiguous, zero friction), whatever its label;
+//   - with TWO OR MORE connected and no pick, null: acting as the wrong account
+//     is worse than asking. The engine connector then refuses with the connected
+//     labels, and the composer account chip is how the user chooses;
 //   - otherwise null (no app attached / nothing connected -> unchanged behavior).
 export function inheritedGoogleAccount(
   picked: string[],
@@ -123,6 +125,6 @@ export function inheritedGoogleAccount(
   if (explicit.length > 0) return explicit.join(",");
   if (!googleAttached) return null;
   const conn = connected.filter((s) => typeof s === "string" && s.trim());
-  if (conn.length === 0) return null;
-  return conn.includes("default") ? "default" : conn[0]!;
+  if (conn.length === 1) return conn[0]!;
+  return null;
 }
