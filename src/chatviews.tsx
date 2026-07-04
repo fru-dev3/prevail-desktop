@@ -179,20 +179,33 @@ function StepChecklist({ msg, accent }: { msg: ChatMessage; accent: string }) {
             {steps.map((s) => {
               const dur = elapsedLabel((s.endedAt ?? now) - s.startedAt);
               return (
-                <div key={s.id} className="flex items-center gap-2 font-mono text-[11px] leading-relaxed">
-                  <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-                    {s.status === "running" ? (
-                      <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
-                    ) : s.status === "failed" ? (
-                      <X className="h-3 w-3 text-warn" />
-                    ) : (
-                      <Check className="h-3 w-3" style={{ color: accent }} />
-                    )}
-                  </span>
-                  <span className={s.status === "failed" ? "text-warn" : s.status === "running" ? "text-text-primary" : "text-text-secondary"}>
-                    {s.label}
-                  </span>
-                  <span className="shrink-0 text-text-muted/70">· {dur}{s.status === "running" ? "…" : ""}</span>
+                <div key={s.id} className="flex flex-col">
+                  <div className="flex items-center gap-2 font-mono text-[11px] leading-relaxed">
+                    <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                      {s.status === "running" ? (
+                        <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
+                      ) : s.status === "failed" ? (
+                        <X className="h-3 w-3 text-warn" />
+                      ) : (
+                        <Check className="h-3 w-3" style={{ color: accent }} />
+                      )}
+                    </span>
+                    <span className={s.status === "failed" ? "text-warn" : s.status === "running" ? "text-text-primary" : "text-text-secondary"}>
+                      {s.label}
+                    </span>
+                    <span className="shrink-0 text-text-muted/70">· {dur}{s.status === "running" ? "…" : ""}</span>
+                  </div>
+                  {/* Debug line: the concrete target of the call (query / file /
+                      command / connector argv), or the error snippet on failure.
+                      Full text on hover via title. */}
+                  {s.detail && (
+                    <div
+                      title={s.detail}
+                      className={`ml-5 truncate font-mono text-[10px] leading-relaxed ${s.status === "failed" ? "text-warn/80" : "text-text-muted/70"}`}
+                    >
+                      {s.detail}
+                    </div>
+                  )}
                 </div>
               );
             })}
