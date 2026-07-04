@@ -492,6 +492,8 @@ export type EngineApp = {
   // The user's free-text "what to pull" instruction (drives the gateway sync).
   pullInstructions?: string | null;
   account: { label?: string; address?: string } | null;
+  // Runtime pin: which AI runtime serves this app's chats (pass-through lanes).
+  runtime?: string | null;
   refresh: { every?: string; at?: string; on?: string } | null;
   autonomy?: string | null;
   // Per-app privacy pin (local-only) + default model for its skill/sync runs.

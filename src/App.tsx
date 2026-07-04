@@ -1881,6 +1881,7 @@ export default function App() {
                 isApp={onApp}
                 appId={onApp && selectedApp ? selectedApp.id : null}
                 appAccount={onApp && selectedApp ? selectedApp.account?.label ?? null : null}
+                appRuntime={onApp && selectedApp ? selectedApp.runtime ?? null : null}
                 vaultPath={vaultPath}
                 clis={clis}
                 fwLens={fwLens}
