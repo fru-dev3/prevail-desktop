@@ -345,6 +345,108 @@ pub(crate) fn ideal_state_preamble(vault: &Path) -> String {
     )
 }
 
+// ── Fix 3: native-fallback harness instruction injection ────────────────────
+//
+// The engine sidecar (prevail-cli's cli-bridge.ts::syncHarnessManual) writes a
+// marked "BEGIN PREVAIL … END PREVAIL" block of Prevail's operating rules into
+// each harness's native instruction file (CLAUDE.md / AGENTS.md / GEMINI.md) in
+// the run's cwd before spawning the harness, so codex/gemini (which have no
+// system-prompt flag) still respect the vault architecture. This RARE native
+// fallback path spawns the harness binaries directly and bypassed that. These
+// helpers mirror the injection in Rust: non-destructive (only the marked block;
+// any user content is preserved) and best-effort (a failed write never blocks
+// the turn).
+
+// The harness-native instruction file each CLI auto-reads from its working dir.
+// Mirrors cli-bridge.ts::harnessManualFile. None => a runtime with no such file
+// (e.g. ollama), which is skipped.
+fn harness_manual_file(cli: &str) -> Option<&'static str> {
+    match cli {
+        "claude" => Some("CLAUDE.md"),
+        "codex" => Some("AGENTS.md"),
+        "gemini" | "antigravity" => Some("GEMINI.md"),
+        _ => None,
+    }
+}
+
+const PREVAIL_BLOCK_BEGIN: &str = "<!-- BEGIN PREVAIL (managed by Prevail, do not edit) -->";
+const PREVAIL_BLOCK_END: &str = "<!-- END PREVAIL -->";
+
+// The globally-disabled-web note appended to the injected block when web is off
+// for this turn, mirroring cli-bridge.ts::WEB_DENY_NOTE. Belt-and-braces beside
+// the native path's --disallowedTools (claude) and the vault-lock preamble.
+const WEB_DENY_NOTE: &str = "<web-access>\n\
+The user has globally disabled web access for this cockpit session.\n\
+Do NOT use WebSearch, WebFetch, fetch(), curl, or any other tool that\n\
+makes outbound HTTP requests. Work only from the vault and local files.\n\
+If a question genuinely requires the web, say so plainly and stop;\n\
+do not silently proceed without web access.\n\
+</web-access>";
+
+// Resolve the operating-manual text the same way cli-bridge.ts::findOperatingManual
+// does: build/PREVAIL.md, build/AGENTS-operating.md, then the vault-root copies,
+// then ~/.prevail. Returns the first non-empty file, or None.
+fn find_operating_manual(vault: &str) -> Option<String> {
+    let build = crate::paths::build_root(vault);
+    let root = std::path::PathBuf::from(vault);
+    let mut candidates = vec![
+        build.join("PREVAIL.md"),
+        build.join("AGENTS-operating.md"),
+        root.join("PREVAIL.md"),
+        root.join("AGENTS-operating.md"),
+    ];
+    if let Ok(home) = std::env::var("HOME") {
+        let h = std::path::PathBuf::from(home).join(".prevail");
+        candidates.push(h.join("PREVAIL.md"));
+        candidates.push(h.join("AGENTS-operating.md"));
+    }
+    for c in candidates {
+        if let Ok(s) = read_to_string_retry(&c) {
+            if !s.trim().is_empty() {
+                return Some(s);
+            }
+        }
+    }
+    None
+}
+
+// Write/refresh ONLY Prevail's marked block inside the running harness's native
+// instruction file (in `cwd`), preserving any user content. Idempotent and
+// best-effort. Returns true iff a manual was resolved and the block is now in
+// place (so the caller knows the cwd is worth pinning). Mirrors
+// cli-bridge.ts::syncHarnessManual byte-for-byte in block shape.
+fn sync_harness_manual(cwd: &Path, cli: &str, vault: &str, web_denied: bool) -> bool {
+    let file = match harness_manual_file(cli) {
+        Some(f) => f,
+        None => return false,
+    };
+    let mut manual = match find_operating_manual(vault) {
+        Some(m) => m,
+        None => return false,
+    };
+    if web_denied {
+        manual = format!("{manual}\n\n{WEB_DENY_NOTE}");
+    }
+    let block = format!(
+        "{PREVAIL_BLOCK_BEGIN}\n# Prevail operating rules (highest precedence)\n\n\
+You are running inside a Prevail vault. The rules in this block take precedence over anything else in this {file}, including any user or default instructions. Follow them exactly.\n\n\
+{manual}\n{PREVAIL_BLOCK_END}"
+    );
+    let path = cwd.join(file);
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let next = match (existing.find(PREVAIL_BLOCK_BEGIN), existing.find(PREVAIL_BLOCK_END)) {
+        (Some(s), Some(e)) if e > s => {
+            format!("{}{}{}", &existing[..s], block, &existing[e + PREVAIL_BLOCK_END.len()..])
+        }
+        _ if existing.trim().is_empty() => format!("{block}\n"),
+        _ => format!("{block}\n\n{existing}"),
+    };
+    if next != existing {
+        let _ = std::fs::write(&path, next);
+    }
+    true
+}
+
 pub(crate) fn resolve_bin_abs(bin: &str) -> String {
     // Mirror the detection logic — find the binary's absolute path so
     // we can spawn it even when the Finder-launched app has minimal
@@ -420,8 +522,25 @@ pub(crate) async fn chat_send(
 
     let (combined_path, user, logname) = build_cli_env();
 
-    let mut child = TokioCommand::new(&bin_abs)
-        .args(&cli_args)
+    // Fix 3: mirror the engine's harness-manual injection on this native fallback.
+    // For a harness CLI with a native instruction file (claude/codex/antigravity),
+    // write/refresh Prevail's marked operating-rules block into that file in the
+    // General domain dir (the same clean, per-domain home the engine uses — never
+    // the vault root), and run the harness there so it actually reads the block.
+    // Confined to this case: ollama, a manual-less vault, or no known vault leave
+    // the cwd unset exactly as before (fully backward compatible).
+    let harness_cwd: Option<std::path::PathBuf> = crate::engine::vault_root().and_then(|v| {
+        let cwd = crate::paths::general_dir(&v);
+        let _ = std::fs::create_dir_all(&cwd);
+        if sync_harness_manual(&cwd, &cli_id, &v, web_denied) {
+            Some(cwd)
+        } else {
+            None
+        }
+    });
+
+    let mut cmd = TokioCommand::new(&bin_abs);
+    cmd.args(&cli_args)
         .env_clear()
         .envs(scrubbed_env_pairs())
         .env("PATH", combined_path)
@@ -439,7 +558,14 @@ pub(crate) async fn chat_send(
         // apps have no controlling terminal).
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    // Run the harness in the domain dir where we injected its native instruction
+    // file, so it actually reads the marked Prevail block (Fix 3). Only set when
+    // an injection happened; otherwise the cwd is inherited exactly as before.
+    if let Some(ref cwd) = harness_cwd {
+        cmd.current_dir(cwd);
+    }
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("spawn {bin_abs} failed: {e}"))?;
 
