@@ -69,18 +69,51 @@ pub fn imports_dir(domain: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// `~/Library/Application Support/Prevail/automation/profiles/<domain>/<portal>/`
-pub fn browser_profile_dir(domain: &str, portal: &str) -> Result<PathBuf, String> {
-    for s in &[domain, portal] {
-        if s.contains('/') || s.contains("..") {
-            return Err(format!("invalid path segment: {s}"));
-        }
+/// Reduce a connector id to a single safe path segment matching `[a-z0-9._-]`.
+/// Takes the basename first (so a full connector dir collapses to the app id),
+/// lowercases, and replaces every other char with `-`. Never empty. This mirrors
+/// the CLI's `sanitizeConnectorId` so both processes key the same directory.
+pub fn sanitize_connector_id(id: &str) -> String {
+    let base = id.rsplit(['/', '\\']).find(|s| !s.is_empty()).unwrap_or("");
+    let clean: String = base
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let trimmed = clean.trim_matches(|c| c == '-' || c == '.');
+    if trimmed.is_empty() {
+        "connector".to_string()
+    } else {
+        trimmed.to_string()
     }
-    let dir = app_support_root()?
-        .join("automation")
-        .join("profiles")
-        .join(domain)
-        .join(portal);
+}
+
+/// `~/.prevail/browser-profiles/` — the MACHINE-LOCAL home for browser-automation
+/// Chrome profiles. A Chrome user-data directory is machine-specific (absolute
+/// paths, locks, regenerable GPU/component caches) and MUST NOT live inside the
+/// synced vault, or syncing it across the user's Macs bloats the vault and can
+/// corrupt auth. This is deliberately OUTSIDE the app-support tree and OUTSIDE
+/// any vault, and mirrors the CLI's `browserProfilesRoot` in `path-safety.ts`.
+pub fn browser_profiles_root() -> Result<PathBuf, String> {
+    let home = std::env::var("HOME").map_err(|e| format!("$HOME unset: {e}"))?;
+    Ok(PathBuf::from(home).join(".prevail").join("browser-profiles"))
+}
+
+/// `~/.prevail/browser-profiles/<connector_id>/profile` — the machine-local
+/// Chrome user-data dir for a browser connector, created on demand. Keyed only
+/// by the (sanitized) connector id so it resolves to the SAME path as the CLI's
+/// `browserProfileDir(connectorId)`; a profile written by either process is found
+/// by the other.
+pub fn browser_profile_dir(connector_id: &str) -> Result<PathBuf, String> {
+    let dir = browser_profiles_root()?
+        .join(sanitize_connector_id(connector_id))
+        .join("profile");
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir profile: {e}"))?;
     Ok(dir)
 }
@@ -224,6 +257,44 @@ mod tests {
     #[test]
     fn slugify_collapses_runs_of_separators() {
         assert_eq!(slugify("a___b---c..d.txt"), "a-b-c-d.txt");
+    }
+
+    #[test]
+    fn browser_profile_dir_is_machine_local_not_vault() {
+        let dir = browser_profile_dir("fidelity-com").expect("profile dir");
+        let s = dir.to_string_lossy().to_string();
+        let home = std::env::var("HOME").expect("HOME");
+        // Rooted under the user's home, in ~/.prevail/browser-profiles, NOT a vault.
+        assert!(s.starts_with(&home), "profile must be under home: {s}");
+        assert!(
+            s.contains("/.prevail/browser-profiles/"),
+            "must live under ~/.prevail/browser-profiles: {s}"
+        );
+        assert!(s.ends_with("fidelity-com/profile"), "unexpected leaf: {s}");
+        assert!(!s.contains("/data/apps/"), "must not be under a vault: {s}");
+        assert!(
+            !s.contains("Application Support"),
+            "must not be under app-support: {s}"
+        );
+    }
+
+    #[test]
+    fn browser_profile_dir_matches_cli_shape() {
+        // Same key layout the CLI produces: <root>/<sanitized id>/profile.
+        let dir = browser_profile_dir("Foo/Bar Baz!").expect("profile dir");
+        let s = dir.to_string_lossy().to_string();
+        // basename "Bar Baz!" -> "bar-baz"
+        assert!(s.ends_with("bar-baz/profile"), "sanitized leaf wrong: {s}");
+    }
+
+    #[test]
+    fn sanitize_connector_id_rules() {
+        assert_eq!(sanitize_connector_id("Fidelity-COM"), "fidelity-com");
+        assert_eq!(sanitize_connector_id("a b!c@d"), "a-b-c-d");
+        assert_eq!(sanitize_connector_id("/vault/data/apps/gmail"), "gmail");
+        assert_eq!(sanitize_connector_id(".."), "connector");
+        assert_eq!(sanitize_connector_id(""), "connector");
+        assert_eq!(sanitize_connector_id("keeps.dots_and-dashes"), "keeps.dots_and-dashes");
     }
 
     #[test]
