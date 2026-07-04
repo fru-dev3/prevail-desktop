@@ -987,6 +987,15 @@ export function ChatPanel({
   // overwrite them and the assistant placeholder loses streaming:true,
   // which is the original cause of the "(empty reply)" symptom.
   const selfSetPathRef = useRef<string | null>(null);
+  // The thread path whose turns are currently shown. Lets the load effect tell a
+  // real navigation (path changed) from a re-pick of the same thread (only the
+  // nonce changed), so it can reload on re-pick yet skip a disk reload that would
+  // wipe a live stream.
+  const displayedPathRef = useRef<string | null>(null);
+  // Current messages, read by the load effect without subscribing to them (so
+  // the effect doesn't re-run on every streamed chunk).
+  const messagesRef = useRef(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
   // Any thread pick returns to the chat view - even re-clicking the active
   // thread (which doesn't change activeThreadPath), so you can always escape
   // the Preferences view by clicking a thread. Skips the initial mount.
@@ -1000,15 +1009,27 @@ export function ChatPanel({
     // Picking a thread (or starting a new one) always returns to the chat view,
     // even if Preferences was open - otherwise the click appears to do nothing.
     setDomainTab("chat");
-    if (!activeThreadPath) { setMessages([]); setThreadTitle(""); return; }
+    if (!activeThreadPath) { setMessages([]); setThreadTitle(""); displayedPathRef.current = null; return; }
     if (selfSetPathRef.current === activeThreadPath) {
       selfSetPathRef.current = null;
+      displayedPathRef.current = activeThreadPath;
+      return;
+    }
+    // Re-picking the SAME thread bumps chatViewNonce but not activeThreadPath, so
+    // without depending on the nonce the load effect never re-fired and the chat
+    // stayed blank (the "first thread shows blank until you make a second one"
+    // bug). We now also key on chatViewNonce. BUT a re-pick of the already-shown
+    // thread must not reload from disk while a reply is streaming - the in-memory
+    // transcript is ahead of disk and reloading would wipe the live assistant
+    // bubble ("(empty reply)"). A real navigation (path changed) always loads.
+    if (activeThreadPath === displayedPathRef.current && messagesRef.current.some((m) => m.streaming)) {
       return;
     }
     let cancelled = false;
     invoke<{ meta: ThreadMeta; turns: ThreadTurn[] }>("load_thread", { path: activeThreadPath })
       .then((t) => {
         if (cancelled) return;
+        displayedPathRef.current = activeThreadPath;
         setThreadTitle(t.meta?.title?.trim() || "Untitled");
         setMessages(t.turns.map((tn) => ({
           role: tn.role,
@@ -1019,7 +1040,7 @@ export function ChatPanel({
       })
       .catch((e) => console.error("load_thread", e));
     return () => { cancelled = true; };
-  }, [activeThreadPath]);
+  }, [activeThreadPath, chatViewNonce]);
   // Auto-save the thread on every message change (debounced). Reads
   // the ref so each save reuses the existing slug once one exists.
   const saveTimer = useRef<number | null>(null);

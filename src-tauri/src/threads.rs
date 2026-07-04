@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::paths::{guard_managed_path, safe_domain_subdir};
+use crate::paths::{guard_managed_path, safe_domain_subdir, thread_search_dirs};
 use crate::read_dir_retry;
 use crate::read_to_string_retry;
 use crate::secs_to_ymdhms;
@@ -273,55 +273,96 @@ fn thread_meta_from(
     }
 }
 
+// A thread's turn "signature" for prefix comparison: role + trimmed content per
+// turn. Two on-disk files are the SAME conversation (one a shorter save of the
+// other) iff one's signature is a prefix of the other's. This is the ONLY thing
+// we ever collapse in the list - never a mere shared first message, which two
+// genuinely distinct conversations legitimately have.
+fn turn_signature(turns: &[ThreadTurn]) -> Vec<(String, String)> {
+    turns
+        .iter()
+        .map(|t| (t.role.clone(), t.content.trim().to_string()))
+        .collect()
+}
+
+// True when `short` is a prefix of `long` (equal length counts). Used to detect
+// a shorter duplicate save of the same conversation so it can be hidden WITHOUT
+// hiding a distinct conversation that merely shares an opener.
+fn is_prefix_of(short: &[(String, String)], long: &[(String, String)]) -> bool {
+    short.len() <= long.len() && short.iter().zip(long.iter()).all(|(a, b)| a == b)
+}
+
 #[tauri::command]
 pub(crate) fn list_threads(vault: String, domain: Option<String>) -> Result<Vec<ThreadMeta>, String> {
-    let threads_dir = safe_domain_subdir(&vault, &domain, "_threads")?;
-    if !threads_dir.exists() {
-        return Ok(vec![]);
-    }
-    let entries = read_dir_retry(&threads_dir).map_err(|e| e.to_string())?;
-    // Collect each thread with a content-dedup key from its FIRST user message.
-    // NOT the slug: threads are created as empty stubs (hash of the empty
-    // string) and keep that slug after being filled, so slug-hash dedup wrongly
-    // collapsed distinct threads and hid freshly-created "Untitled" threads.
-    let mut rows: Vec<(ThreadMeta, Option<String>)> = Vec::new();
-    for entry in entries.flatten() {
-        let p = entry.path();
-        if p.extension().and_then(|s| s.to_str()) != Some("md") {
+    // Read from EVERY directory a thread may live in (v4 memory/threads AND the
+    // legacy _threads), so a thread is never hidden by the v4 remap split. A
+    // file present in both (the v4 migrator COPIES) collapses via prefix-dedup
+    // below, so the merge never double-lists it.
+    let dirs = thread_search_dirs(&vault, &domain)?;
+    let mut rows: Vec<(ThreadMeta, Vec<(String, String)>)> = Vec::new();
+    let mut seen_paths: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    for threads_dir in &dirs {
+        if !threads_dir.exists() {
             continue;
         }
-        let raw = match read_to_string_retry(&p) {
-            Ok(s) => s,
+        let entries = match read_dir_retry(threads_dir) {
+            Ok(e) => e,
             Err(_) => continue,
         };
-        let (fm, body) = split_frontmatter(&raw);
-        let turns = parse_thread_body(&body);
-        let key = turns
-            .iter()
-            .find(|t| t.role == "user")
-            .map(|t| t.content.trim())
-            .filter(|c| !c.is_empty())
-            .map(|c| c.chars().take(160).collect::<String>().to_lowercase());
-        rows.push((thread_meta_from(&p, &fm, &body, &turns), key));
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("md") {
+                continue;
+            }
+            // Same physical file reached via two dir entries (e.g. a symlink) -
+            // count it once.
+            let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
+            if !seen_paths.insert(canon) {
+                continue;
+            }
+            let raw = match read_to_string_retry(&p) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let (fm, body) = split_frontmatter(&raw);
+            let turns = parse_thread_body(&body);
+            let sig = turn_signature(&turns);
+            rows.push((thread_meta_from(&p, &fm, &body, &turns), sig));
+        }
     }
-    // Dedup the dual-writer case (one conversation saved twice under slightly
-    // different slugs): collapse by (domain, first-user-message), keeping the
-    // most complete copy (most turns, then newest). Empty stubs (key None) are
-    // NEVER deduped, so a new "+ New" thread always shows immediately.
+    // Collapse ONLY true duplicates: a thread whose full turn-sequence is a
+    // PREFIX of an already-kept (longer/newer) thread in the same domain. This
+    // hides the shorter save of one conversation (dual-writer / migration copy)
+    // but NEVER a conversation that diverges - two chats that share an opener
+    // but differ afterward are not prefixes of each other, so both survive.
+    // Empty threads (no turns) are kept as-is so a fresh "+ New" stub shows.
     rows.sort_by(|a, b| b.0.turn_count.cmp(&a.0.turn_count).then(b.0.updated.cmp(&a.0.updated)));
-    let mut seen: std::collections::HashSet<(Option<String>, String)> = std::collections::HashSet::new();
-    rows.retain(|(m, key)| match key {
-        Some(k) => seen.insert((m.domain.clone(), k.clone())),
-        None => true,
-    });
-    let mut out: Vec<ThreadMeta> = rows.into_iter().map(|(m, _)| m).collect();
+    let mut kept: Vec<(ThreadMeta, Vec<(String, String)>)> = Vec::new();
+    for (meta, sig) in rows.into_iter() {
+        if sig.is_empty() {
+            kept.push((meta, sig));
+            continue;
+        }
+        let subsumed = kept.iter().any(|(km, ksig)| {
+            km.domain == meta.domain && !ksig.is_empty() && is_prefix_of(&sig, ksig)
+        });
+        if !subsumed {
+            kept.push((meta, sig));
+        }
+    }
+    let mut out: Vec<ThreadMeta> = kept.into_iter().map(|(m, _)| m).collect();
     out.sort_by(|a, b| b.updated.cmp(&a.updated));
     Ok(out)
 }
 
 #[tauri::command]
 pub(crate) fn load_thread(path: String) -> Result<ThreadFull, String> {
-    guard_managed_path(&path, "/threads/", ".md")?;
+    // Accept BOTH the v4 home (.../memory/threads/x.md, contains "/threads/")
+    // AND the legacy flat dir (.../_threads/x.md, contains "/_threads/" but NOT
+    // "/threads/"). The substring "threads/" is common to both, so a legacy
+    // thread is no longer rejected here - that rejection was blanking the chat
+    // for any thread still living under _threads/.
+    guard_managed_path(&path, "threads/", ".md")?;
     let p = PathBuf::from(&path);
     if !p.exists() {
         return Err(format!("thread not found: {path}"));
@@ -348,6 +389,19 @@ fn sanitize_existing_slug(s: &str) -> String {
         .collect::<String>()
         .trim_matches('-')
         .to_string()
+}
+
+// Read the turns already persisted at `path` (empty if absent/unreadable). Used
+// by save_thread to refuse any write that would DROP turns already on disk for
+// a file that isn't the same live conversation (the disappearance guarantee).
+fn read_turns_at(path: &Path) -> Vec<ThreadTurn> {
+    match read_to_string_retry(path) {
+        Ok(raw) => {
+            let (_fm, body) = split_frontmatter(&raw);
+            parse_thread_body(&body)
+        }
+        Err(_) => Vec::new(),
+    }
 }
 
 // Tiny stable hash for slug generation — FNV-1a 32-bit. We only need
@@ -383,8 +437,27 @@ pub(crate) fn save_thread(
     let (year, month, day, hh, mm, ss) = secs_to_ymdhms(now as i64);
     let stamp = format!("{year:04}-{month:02}-{day:02}_{hh:02}-{mm:02}-{ss:02}");
 
-    let final_slug = match slug.as_ref().map(|s| sanitize_existing_slug(s)).filter(|s| !s.is_empty()) {
-        Some(s) => s,
+    // Resolve the exact file this save targets. A KNOWN slug (the active thread
+    // updating itself) is authoritative for its OWN file and may legitimately
+    // shrink turns (edit / retry-from-here rewinds the transcript) - that is the
+    // "same live conversation" exception. A slug=null save is a CREATE and must
+    // NEVER land on top of a different existing conversation.
+    let known_slug = slug.as_ref().map(|s| sanitize_existing_slug(s)).filter(|s| !s.is_empty());
+    let file_path: PathBuf = match known_slug.as_ref() {
+        Some(s) => {
+            // Target the file where this slug already lives (it may be a legacy
+            // _threads/ thread, not the canonical memory/threads/ dir) so an
+            // update never forks a second copy in the other dir. Fall back to
+            // the canonical dir for a brand-new file.
+            thread_search_dirs(&vault, &domain)
+                .ok()
+                .and_then(|dirs| {
+                    dirs.into_iter()
+                        .map(|d| d.join(format!("{s}.md")))
+                        .find(|p| p.exists())
+                })
+                .unwrap_or_else(|| threads_dir.join(format!("{s}.md")))
+        }
         None => {
             let first_user = turns
                 .iter()
@@ -393,17 +466,20 @@ pub(crate) fn save_thread(
                 .unwrap_or("");
             let hash = fnv1a32(first_user.as_bytes());
             let hash_suffix = format!("{hash:08x}");
-            // Dedup safety net: the frontend autosave can fire two
-            // slug=null saves seconds apart for the SAME new conversation
-            // (e.g. once when the prompt is sent, once when the reply
-            // lands). Each previously produced a distinct
-            // `<timestamp>_<hash>.md`, so the thread appeared twice. If a
-            // thread with this same first-message hash was created very
-            // recently, reuse it instead of creating a duplicate.
-            let mut reuse: Option<String> = None;
+            // Dedup safety net for the frontend firing two slug=null saves
+            // seconds apart for the SAME new conversation. We reuse a recent
+            // thread ONLY when it is provably that same conversation: its
+            // on-disk turns must be a PREFIX of the turns we are about to write
+            // (i.e. this save strictly EXTENDS it). A distinct conversation that
+            // merely opens with the same first message diverges, is not a
+            // prefix, and therefore gets its own file instead of clobbering the
+            // other - which is exactly the lost-thread bug. Prefix-reuse also
+            // guarantees we never write fewer turns than are already there.
+            let incoming_sig = turn_signature(&turns);
+            let mut reuse: Option<PathBuf> = None;
             if !first_user.is_empty() {
                 if let Ok(rd) = fs::read_dir(&threads_dir) {
-                    let mut best: Option<(u64, String)> = None;
+                    let mut best: Option<(u64, PathBuf)> = None;
                     for e in rd.flatten() {
                         let p = e.path();
                         if p.extension().and_then(|x| x.to_str()) != Some("md") {
@@ -413,32 +489,61 @@ pub(crate) fn save_thread(
                         if !stem.ends_with(&hash_suffix) {
                             continue;
                         }
-                        let created = read_to_string_retry(&p)
-                            .ok()
-                            .and_then(|raw| {
-                                split_frontmatter(&raw)
-                                    .0
-                                    .get("created")
-                                    .map(|s| parse_iso8601_z(s))
-                            })
-                            .unwrap_or(0);
-                        // Only merge into a thread created in the last 10
-                        // minutes, so genuinely separate conversations that
-                        // happen to share a first message stay distinct.
+                        let raw = match read_to_string_retry(&p) {
+                            Ok(r) => r,
+                            Err(_) => continue,
+                        };
+                        let (fm, body) = split_frontmatter(&raw);
+                        let existing_sig = turn_signature(&parse_thread_body(&body));
+                        // Same conversation only: existing must be a prefix of
+                        // what we are writing. Never merge a divergent chat.
+                        if !is_prefix_of(&existing_sig, &incoming_sig) {
+                            continue;
+                        }
+                        let created = fm.get("created").map(|s| parse_iso8601_z(s)).unwrap_or(0);
+                        // And only very recently (10 min), so two identical
+                        // openers far apart in time still stay distinct.
                         if created != 0 && now.saturating_sub(created) < 600 {
                             if best.as_ref().map(|(c, _)| created > *c).unwrap_or(true) {
-                                best = Some((created, stem.to_string()));
+                                best = Some((created, p.clone()));
                             }
                         }
                     }
-                    reuse = best.map(|(_, s)| s);
+                    reuse = best.map(|(_, p)| p);
                 }
             }
-            reuse.unwrap_or_else(|| format!("{stamp}_{hash_suffix}"))
+            match reuse {
+                Some(p) => p,
+                None => {
+                    // Guarantee a FREE filename. Two distinct conversations that
+                    // open with the same message in the SAME second would hash
+                    // and stamp identically to `{stamp}_{hash}.md`; without this
+                    // the second silently overwrote the first. Disambiguate
+                    // until the path is unused so a create can never clobber.
+                    let mut candidate = threads_dir.join(format!("{stamp}_{hash_suffix}.md"));
+                    let mut n = 1u32;
+                    while candidate.exists() {
+                        candidate = threads_dir.join(format!("{stamp}_{hash_suffix}_{n}.md"));
+                        n += 1;
+                    }
+                    candidate
+                }
+            }
         }
     };
 
-    let file_path = threads_dir.join(format!("{final_slug}.md"));
+    // Final anti-loss guard, independent of the path chosen above: never write
+    // FEWER turns than are already on disk for a slug=null CREATE (which must
+    // only ever add a new or same-conversation file, never shrink one). A
+    // known-slug update is exempt - edit/retry deliberately rewinds and the
+    // frontend targets its own file. If this create would drop turns, keep the
+    // richer on-disk version untouched and just return its path.
+    if known_slug.is_none() {
+        let on_disk = read_turns_at(&file_path);
+        if on_disk.len() > turns.len() {
+            return Ok(file_path.to_string_lossy().to_string());
+        }
+    }
 
     // Preserve existing `created` timestamp + title if the file is
     // being overwritten with a known slug; otherwise stamp it now.
@@ -515,7 +620,12 @@ pub(crate) fn save_thread(
 
 #[tauri::command]
 pub(crate) fn rename_thread(path: String, new_title: String) -> Result<(), String> {
-    guard_managed_path(&path, "/threads/", ".md")?;
+    // Accept BOTH the v4 home (.../memory/threads/x.md, contains "/threads/")
+    // AND the legacy flat dir (.../_threads/x.md, contains "/_threads/" but NOT
+    // "/threads/"). The substring "threads/" is common to both, so a legacy
+    // thread is no longer rejected here - that rejection was blanking the chat
+    // for any thread still living under _threads/.
+    guard_managed_path(&path, "threads/", ".md")?;
     let p = PathBuf::from(&path);
     if !p.exists() {
         return Err(format!("thread not found: {path}"));
@@ -570,7 +680,12 @@ pub(crate) fn rename_thread(path: String, new_title: String) -> Result<(), Strin
 
 #[tauri::command]
 pub(crate) fn delete_thread(path: String) -> Result<(), String> {
-    guard_managed_path(&path, "/threads/", ".md")?;
+    // Accept BOTH the v4 home (.../memory/threads/x.md, contains "/threads/")
+    // AND the legacy flat dir (.../_threads/x.md, contains "/_threads/" but NOT
+    // "/threads/"). The substring "threads/" is common to both, so a legacy
+    // thread is no longer rejected here - that rejection was blanking the chat
+    // for any thread still living under _threads/.
+    guard_managed_path(&path, "threads/", ".md")?;
     let p = PathBuf::from(&path);
     if !p.exists() {
         return Err(format!("thread not found: {path}"));
@@ -614,6 +729,126 @@ mod tests {
         assert!(!is_turn_header("The math"));
         assert!(!is_turn_header("Why \"it depends\""));
         assert!(!is_turn_header("1. Index Funds"));
+    }
+
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static CTR: AtomicU32 = AtomicU32::new(0);
+
+    fn fresh_vault(tag: &str) -> String {
+        let n = CTR.fetch_add(1, Ordering::SeqCst);
+        let d = std::env::temp_dir().join(format!("prevail-threads-{tag}-{}-{n}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d.to_string_lossy().to_string()
+    }
+    fn user(s: &str) -> ThreadTurn {
+        ThreadTurn { role: "user".into(), cli: None, model: None, content: s.into() }
+    }
+    fn asst(s: &str) -> ThreadTurn {
+        ThreadTurn { role: "assistant".into(), cli: Some("claude".into()), model: None, content: s.into() }
+    }
+    fn turn_count_on_disk(path: &str) -> usize {
+        read_turns_at(Path::new(path)).len()
+    }
+
+    // Two conversations with DIFFERENT first messages must produce two files,
+    // each with its own turns, and both must list.
+    #[test]
+    fn distinct_first_messages_never_collide() {
+        let v = fresh_vault("distinct");
+        let dom = Some("health".to_string());
+        let pa = save_thread(v.clone(), dom.clone(), None, "A".into(), vec![user("weather?"), asst("sunny")]).unwrap();
+        let pb = save_thread(v.clone(), dom.clone(), None, "B".into(), vec![user("stocks?"), asst("up")]).unwrap();
+        assert_ne!(pa, pb, "different openers -> different files");
+        assert_eq!(load_thread(pa).unwrap().turns[0].content, "weather?");
+        assert_eq!(load_thread(pb).unwrap().turns[0].content, "stocks?");
+        let list = list_threads(v, dom).unwrap();
+        assert_eq!(list.len(), 2, "both threads listed");
+    }
+
+    // THE disappearance guarantee: a NEW conversation that opens with the SAME
+    // first message as a recent thread but then DIVERGES must NOT overwrite or
+    // hide the earlier one. Both files survive with their own turns; both list.
+    #[test]
+    fn same_opener_distinct_conversation_does_not_clobber() {
+        let v = fresh_vault("sameopener");
+        let dom = Some("health".to_string());
+        let pa = save_thread(v.clone(), dom.clone(), None, "A".into(), vec![user("hi"), asst("hello, I am A")]).unwrap();
+        let pb = save_thread(v.clone(), dom.clone(), None, "B".into(), vec![user("hi"), asst("hello, I am B")]).unwrap();
+        assert_ne!(pa, pb, "same opener but distinct convo -> distinct files, no reuse");
+        assert_eq!(load_thread(pa.clone()).unwrap().turns[1].content, "hello, I am A", "A not clobbered");
+        assert_eq!(load_thread(pb.clone()).unwrap().turns[1].content, "hello, I am B");
+        let list = list_threads(v, dom).unwrap();
+        assert_eq!(list.len(), 2, "both same-opener conversations remain visible");
+    }
+
+    // The intended dedup DOES still fire for the SAME conversation saved twice
+    // (the frontend double-fire): the second save strictly EXTENDS the first, so
+    // its turns are a superset -> reuse the same file, no duplicate.
+    #[test]
+    fn same_conversation_extended_reuses_file() {
+        let v = fresh_vault("extend");
+        let dom = Some("work".to_string());
+        let p1 = save_thread(v.clone(), dom.clone(), None, "t".into(), vec![user("plan my week")]).unwrap();
+        // Same conversation, now with the assistant reply appended.
+        let p2 = save_thread(v.clone(), dom.clone(), None, "t".into(), vec![user("plan my week"), asst("here is a plan")]).unwrap();
+        assert_eq!(p1, p2, "extension of the same conversation reuses the file");
+        assert_eq!(turn_count_on_disk(&p2), 2);
+        assert_eq!(list_threads(v, dom).unwrap().len(), 1, "no duplicate row");
+    }
+
+    // An empty "+ New thread" pre-create must never overwrite or reuse a real
+    // thread, even one created moments earlier.
+    #[test]
+    fn empty_stub_never_overwrites_real_thread() {
+        let v = fresh_vault("stub");
+        let dom = Some("health".to_string());
+        let real = save_thread(v.clone(), dom.clone(), None, "real".into(), vec![user("important"), asst("noted")]).unwrap();
+        let stub = save_thread(v.clone(), dom.clone(), None, "Untitled".into(), vec![]).unwrap();
+        assert_ne!(real, stub);
+        assert_eq!(turn_count_on_disk(&real), 2, "real thread untouched by the empty stub");
+    }
+
+    // A slug=null CREATE must never REDUCE the turns already on disk for the file
+    // it would land on (belt-and-suspenders against a stale short save).
+    #[test]
+    fn create_never_reduces_disk_turns() {
+        let v = fresh_vault("noreduce");
+        let dom = Some("work".to_string());
+        let p = save_thread(v.clone(), dom.clone(), None, "t".into(), vec![user("q"), asst("a1"), asst("a2")]).unwrap();
+        let slug = Path::new(&p).file_stem().unwrap().to_string_lossy().to_string();
+        // A KNOWN-slug update MAY shrink (edit / retry rewinds) - same live convo.
+        let p2 = save_thread(v.clone(), dom.clone(), Some(slug), "t".into(), vec![user("q")]).unwrap();
+        assert_eq!(p, p2);
+        assert_eq!(turn_count_on_disk(&p2), 1, "known-slug edit legitimately rewinds");
+    }
+
+    // v4 split: a thread saved on a v4-marked domain is found by BOTH list_threads
+    // and load_thread at the SAME (memory/threads) location; and a thread that
+    // already sits in the legacy _threads/ of a v4 domain is still listed (not
+    // orphaned by the memory/threads remap).
+    #[test]
+    fn v4_domain_threads_are_never_orphaned() {
+        let v = fresh_vault("v4split");
+        // Make health a v4-marked domain under data/domains.
+        let dpath = PathBuf::from(&v).join("data").join("domains").join("health");
+        fs::create_dir_all(&dpath).unwrap();
+        fs::write(dpath.join(crate::paths::V4_MARKER), "1").unwrap();
+        let dom = Some("health".to_string());
+        // A save lands in memory/threads and round-trips through list + load.
+        let p = save_thread(v.clone(), dom.clone(), None, "new".into(), vec![user("hello v4"), asst("hi")]).unwrap();
+        assert!(p.contains("memory/threads"), "v4 save goes to memory/threads: {p}");
+        assert_eq!(load_thread(p.clone()).unwrap().turns[0].content, "hello v4");
+        // A pre-existing legacy thread sitting in the flat _threads/ dir.
+        let legacy_dir = dpath.join("_threads");
+        fs::create_dir_all(&legacy_dir).unwrap();
+        fs::write(
+            legacy_dir.join("2020-01-01_00-00-00_deadbeef.md"),
+            "---\ntitle: Legacy\ndomain: health\ncreated: 2020-01-01T00:00:00Z\nupdated: 2020-01-01T00:00:00Z\nturns: 2\n---\n\n## You\n\nold question\n\n## claude\n\nold answer\n\n",
+        ).unwrap();
+        let list = list_threads(v, dom).unwrap();
+        assert_eq!(list.len(), 2, "both the v4 thread and the legacy _threads/ thread list");
+        assert!(list.iter().any(|m| m.title == "Legacy"), "legacy thread not orphaned");
     }
 
     #[test]
