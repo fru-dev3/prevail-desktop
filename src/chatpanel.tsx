@@ -1821,9 +1821,15 @@ export function ChatPanel({
         thread: activeThreadRef.current,
         cli: chatCli ?? null,
         model: turnModel,
-        // Provenance surface: which composer this came from. host/app/version
-        // are stamped server-side by intent_append.
+        // Provenance surface: which composer this came from. host/app/version/
+        // os/engine are stamped server-side by intent_append.
         surface: isApp ? "app-chat" : "chat",
+        // The EXACT versioned model behind an alias pick (opus -> claude-opus-4-8),
+        // so the record is precise even after aliases move to newer releases.
+        model_id: ((MODELS[chatCli ?? ""] ?? []).find((mm) => mm.id === turnModel)?.resolved) ?? (turnModel || null),
+        // IANA timezone of the composer at send time: with the epoch ts this
+        // makes when-do-I-work analyses possible across machines and travel.
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
         message: maybeRedact(visible), // what the user typed
         prompt: maybeRedact(promptText), // the exact, fully-assembled prompt sent to the model
         prefs,

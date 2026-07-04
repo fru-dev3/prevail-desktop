@@ -551,7 +551,7 @@ const sourceLabel = (s: string) => SOURCE_LABELS[s.toLowerCase()] ?? titleCase(s
 type DistilledDoc = { generated_ts: number; source_count: number; intents: DistilledIntent[] };
 
 export function IntentsSection({ vaultPath }: { vaultPath: string }) {
-  type IntentRow = { message?: string; cli?: string; model?: string; ts?: number; domain?: string; surface?: string; source?: string; host?: string; app_version?: string };
+  type IntentRow = { message?: string; cli?: string; model?: string; model_id?: string; ts?: number; domain?: string; surface?: string; source?: string; host?: string; app_version?: string };
   const [intents, setIntents] = useState<IntentRow[]>([]);
   const [q, setQ] = useState("");
   const [domainFilter, setDomainFilter] = useState("all");
@@ -855,13 +855,22 @@ export function IntentsSection({ vaultPath }: { vaultPath: string }) {
               <div className="min-w-0 flex-1">
                 <div className="line-clamp-2 text-sm text-text-primary">{String(it.message ?? "(no text)")}</div>
                 <div className="mt-0.5 font-mono text-[10px] text-text-muted">
-                  {(external
-                    ? `${it.source === "push" ? "live" : "synced"}${it.ts ? ` · ${formatFreshness(Math.max(0, (Date.now() - it.ts) / 1000))}` : ""}`
-                    : `${it.surface === "app-chat" ? "app chat · " : ""}${it.cli ?? ""}${it.model ? ` · ${it.model}` : ""}${it.ts ? ` · ${formatFreshness(Math.max(0, (Date.now() - it.ts) / 1000))}` : ""}`)
-                    /* Provenance: which machine (and app version) this prompt
-                       came from - the activity-attribution ask. Old rows
-                       without the fields render exactly as before. */
-                    + (it.host ? ` · ${it.host}` : "") + (it.app_version ? ` · v${it.app_version}` : "")}
+                  {(() => {
+                    /* Absolute, to-the-second local timestamp: "32 minutes ago"
+                       means nothing a year from now. Relative rides along in
+                       parens for at-a-glance recency. */
+                    const abs = it.ts ? new Date(it.ts).toLocaleString("sv-SE") : "";
+                    const rel = it.ts ? formatFreshness(Math.max(0, (Date.now() - it.ts) / 1000)) : "";
+                    const when = abs ? `${abs}${rel ? ` (${rel})` : ""}` : "";
+                    /* Exact model beats alias: model_id carries the versioned id
+                       (claude-opus-4-8) recorded at send; older rows fall back
+                       to whatever alias they stored. */
+                    const model = it.model_id || it.model || "";
+                    const head = external
+                      ? (it.source === "push" ? "live" : "synced")
+                      : `${it.surface === "app-chat" ? "app chat · " : ""}${it.cli ?? ""}${model ? ` · ${model}` : ""}`;
+                    return [head, when, it.host || "", it.app_version ? `v${it.app_version}` : ""].filter(Boolean).join(" · ");
+                  })()}
                 </div>
               </div>
               <button
