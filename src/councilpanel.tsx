@@ -863,6 +863,12 @@ export function CouncilPanel({
     const skillsPreamble = attachedSkills.length > 0
       ? await buildSkillsPreamble(attachedSkills, allSkills, domain ?? null)
       : "";
+    // Usage intelligence: tick the ledger for skills riding this convene
+    // (fire-and-forget). Same ledger the chat path writes.
+    for (const name of attachedSkills) {
+      const sk = allSkills.find((s) => s.name === name);
+      if (sk) void invoke("engine_skill_used", { domain: sk.domain, skill: sk.name, source: "council" }).catch(() => {});
+    }
     // Continuation: feed prior council turns (questions + chair verdicts)
     // so this convene builds on the conversation so far.
     const histItems = councilTurns.filter(

@@ -1,8 +1,8 @@
 // Self-contained Settings sections extracted from App.tsx: Daemons, cross-domain
 // Tasks, Intents, Memory & Context, and Skills. vaultPath-driven; no App-root
 // state closure.
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bell, Brain, Check, ChevronRight, Eye, Folder, GraduationCap, Laptop, Lightbulb, ListChecks, Loader2, MessageSquarePlus, Server, Sparkles, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Archive, ArrowRight, Bell, Brain, Check, ChevronRight, Eye, Folder, GraduationCap, Laptop, Lightbulb, ListChecks, Loader2, MessageSquarePlus, Server, Sparkles, Upload, X } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
@@ -997,6 +997,34 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
     return () => { mounted = false; };
   }, [vaultPath]);
 
+  // Usage intelligence: per-skill uses / last-used / verdict from the vault
+  // ledger, so the list ranks by REAL popularity and dead weight is visible.
+  type UsageRow = { domain: string; id: string; uses: number; lastTs: number | null; verdict: "active" | "dormant" | "unused" };
+  const [usage, setUsage] = useState<Map<string, UsageRow>>(new Map());
+  const [usageTotals, setUsageTotals] = useState<{ unused: number; dormant: number } | null>(null);
+  const loadUsage = useCallback(() => {
+    invoke<{ unused: number; dormant: number; rows: UsageRow[] }>("engine_skills_report")
+      .then((rep) => {
+        const m = new Map<string, UsageRow>();
+        for (const r of rep.rows ?? []) m.set(`${r.domain.toLowerCase()}/${r.id.toLowerCase()}`, r);
+        setUsage(m); setUsageTotals({ unused: rep.unused ?? 0, dormant: rep.dormant ?? 0 });
+      })
+      .catch(() => { setUsage(new Map()); setUsageTotals(null); });
+  }, []);
+  useEffect(() => { loadUsage(); }, [vaultPath, loadUsage]);
+  const usageOf = (sk: SkillEntry) => usage.get(`${sk.domain.toLowerCase()}/${sk.name.toLowerCase()}`);
+  // Archive a skill (move to skills/_archive - never deleted; restorable via
+  // `prevail skill-usage unarchive`). Refreshes both the scan and the report.
+  async function archiveSkillRow(sk: SkillEntry) {
+    try {
+      const r = await invoke<{ ok?: boolean; error?: string }>("engine_skill_archive", { domain: sk.domain, skill: sk.name, restore: null });
+      if (r && r.ok === false) { setUploadMsg(r.error ?? "archive failed"); return; }
+      setSkills((cur) => cur.filter((x) => x.path !== sk.path));
+      setUploadMsg(`Archived ${sk.name}. Restore anytime: prevail skill-usage unarchive ${sk.domain} ${sk.name}`);
+      loadUsage();
+    } catch (e) { setUploadMsg(`archive failed: ${String(e).slice(0, 140)}`); }
+  }
+
   // Domains present in the vault's skills, for the by-domain filter.
   const domains = useMemo(
     () => [...new Set(skills.map((s) => s.domain.toLowerCase()))].sort(),
@@ -1005,14 +1033,20 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return skills.filter((s) => {
+    const list = skills.filter((s) => {
       if (domainFilter !== "all" && s.domain.toLowerCase() !== domainFilter) return false;
       if (!q) return true;
       return s.name.toLowerCase().includes(q) ||
         s.domain.toLowerCase().includes(q) ||
         (s.description ?? "").toLowerCase().includes(q);
     });
-  }, [skills, filter, domainFilter]);
+    // Popularity order: most-used first, never-used last, ties by name - the
+    // "intelligent surface" that keeps living skills on top and bloat visible.
+    return [...list].sort((a, b) => {
+      const ua = usageOf(a); const ub = usageOf(b);
+      return ((ub?.uses ?? 0) - (ua?.uses ?? 0)) || ((ub?.lastTs ?? 0) - (ua?.lastTs ?? 0)) || a.name.localeCompare(b.name);
+    });
+  }, [skills, filter, domainFilter, usage]);
 
   // All vault domains (not just those with skills) for the install target.
   useEffect(() => {
@@ -1162,6 +1196,11 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
             >
               <ChevronRight className={`h-3.5 w-3.5 shrink-0 transition-transform ${listOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />
               {listOpen ? "Collapse" : `Show ${filtered.length} skill${filtered.length === 1 ? "" : "s"}`}
+              {usageTotals && (usageTotals.unused > 0 || usageTotals.dormant > 0) && (
+                <span className="ml-2 font-mono text-[10px] uppercase tracking-wider text-warn">
+                  {usageTotals.unused > 0 ? `${usageTotals.unused} never used` : ""}{usageTotals.unused > 0 && usageTotals.dormant > 0 ? " · " : ""}{usageTotals.dormant > 0 ? `${usageTotals.dormant} dormant` : ""} - consider archiving
+                </span>
+              )}
             </button>
             {listOpen && (
               <ul className="ml-4 mt-1 flex flex-col gap-1 border-l border-border-subtle pl-3">
@@ -1185,6 +1224,14 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
                               <span className="rounded-md border border-border-subtle bg-background px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
                                 {titleCase(s.domain)}
                               </span>
+                              {(() => {
+                                const u = usageOf(s);
+                                if (!u) return null;
+                                if (u.verdict === "unused") return <span className="rounded-md bg-warn/10 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-warn">never used</span>;
+                                const days = u.lastTs ? Math.max(0, Math.floor((Date.now() - u.lastTs) / 86_400_000)) : null;
+                                const rel = days === null ? "" : days === 0 ? " · today" : ` · ${days}d ago`;
+                                return <span className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${u.verdict === "dormant" ? "bg-warn/10 text-warn" : "bg-surface-warm text-text-muted"}`}>{u.uses} use{u.uses === 1 ? "" : "s"}{rel}{u.verdict === "dormant" ? " · dormant" : ""}</span>;
+                              })()}
                             </div>
                             {cleaned && (
                               <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-text-secondary">
@@ -1206,6 +1253,10 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
                           <button onClick={() => useSkillInChat(s)} title="Use in a chat" aria-label="Use in a chat"
                             className="rounded-md p-1.5 text-text-muted transition-colors hover:bg-surface hover:text-accent">
                             <MessageSquarePlus className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={() => void archiveSkillRow(s)} title="Archive this skill (moved aside, never deleted)" aria-label="Archive this skill"
+                            className="rounded-md p-1.5 text-text-muted transition-colors hover:bg-surface hover:text-warn">
+                            <Archive className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       </div>
