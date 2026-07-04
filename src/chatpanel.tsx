@@ -1752,6 +1752,13 @@ export function ChatPanel({
     // Load the attached skills' actual SKILL.md bodies so the model gets their
     // instructions, not just a reference to a name it can't see.
     const skillsPreamble = await buildSkillsPreamble(attachedSkills, allSkills, domain ?? null);
+    // Usage intelligence: tick the ledger for every skill riding this send
+    // (fire-and-forget - accounting never delays or breaks the turn). Powers
+    // the Skills page's popularity ranking + archive-the-bloat suggestions.
+    for (const name of attachedSkills) {
+      const sk = allSkills.find((s) => s.name === name && (s.domain === domain || !allSkills.some((x) => x.name === name && x.domain === domain)));
+      if (sk) void invoke("engine_skill_used", { domain: sk.domain, skill: sk.name, source: "chat" }).catch(() => {});
+    }
     // Build multi-turn context from prior messages. We pass it as a
     // single text payload because the CLIs spawn fresh each turn and
     // have no shared session. Cap at ~40K characters (~10K tokens) and

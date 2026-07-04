@@ -1350,6 +1350,29 @@ pub fn engine_app_set_model(id: String, model: String) -> Result<serde_json::Val
     run_engine_json(&["connectors", "set", &id, "model", &model, "--json"])
 }
 
+/// Record one skill USE in the vault's usage ledger (fire-and-forget from the
+/// chat/council send paths). Powers skill popularity + archive-the-bloat.
+#[tauri::command]
+pub fn engine_skill_used(domain: String, skill: String, source: String) -> Result<(), String> {
+    // Best-effort by contract: a usage tick must never disturb the send path.
+    let _ = run_engine_json(&["skill-usage", "used", &domain, &skill, "--source", &source, "--json"]);
+    Ok(())
+}
+
+/// Usage report for every skill in the vault: uses, last-used, verdict
+/// (active | dormant | unused). Computed live from the ledger + scan.
+#[tauri::command]
+pub fn engine_skills_report() -> Result<serde_json::Value, String> {
+    run_engine_json(&["skill-usage", "report", "--json"])
+}
+
+/// Archive (or restore) a skill: moved to skills/_archive/<id>, never deleted.
+#[tauri::command]
+pub fn engine_skill_archive(domain: String, skill: String, restore: Option<bool>) -> Result<serde_json::Value, String> {
+    let action = if restore.unwrap_or(false) { "unarchive" } else { "archive" };
+    run_engine_json(&["skill-usage", action, &domain, &skill, "--json"])
+}
+
 /// Bind (or clear) an app's account identity - WHICH account of a multi-account
 /// connector this app instance is (e.g. which Google account). Attaching the app
 /// to a chat carries this identity into the turn. Empty label clears the
