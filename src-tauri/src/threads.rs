@@ -311,6 +311,14 @@ pub(crate) fn list_threads(vault: String, domain: Option<String>) -> Result<Vec<
         };
         for entry in entries.flatten() {
             let p = entry.path();
+            // Skip macOS AppleDouble sidecars (._file) and any hidden dotfile.
+            // On network / exFAT mounts macOS drops a ._<thread>.md next to every
+            // thread; listing one and using its stem as a session id yields
+            // "invalid session id" and blocks follow-up turns. Real thread files
+            // never start with a dot.
+            if entry.file_name().to_str().map(|n| n.starts_with('.')).unwrap_or(true) {
+                continue;
+            }
             if p.extension().and_then(|s| s.to_str()) != Some("md") {
                 continue;
             }
