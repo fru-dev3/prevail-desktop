@@ -894,6 +894,18 @@ export function CouncilPanel({
     const enrichedPrompt = fwLens.buildPrompt(`${userPreamble}${memoryPreamble}${primedPreamble}${historyPreamble}${skillsPreamble}${attachPreamble}${trimmed}`);
     setPrompt("");
     setAttachedSkills([]);
+    // Index pasted images with council context + kick captioning (fire-forget).
+    if (pastedFiles.length > 0) {
+      const rel = (a: string) => (a.startsWith(_vaultPath) ? a.slice(_vaultPath.length + 1).replace(/^\/+/, "") : a);
+      void invoke("attachments_index_append", {
+        vault: _vaultPath,
+        records: pastedFiles.map((a) => ({
+          file: rel(a), ts: Date.now(), domain: domain ?? null,
+          session: sessionRef.current, surface: "council", message: trimmed.slice(0, 140),
+        })),
+      }).catch(() => {});
+      void invoke("engine_attachments_caption").catch(() => {});
+    }
     setPastedFiles([]);
     for (const s of panelistSlots) {
       try {

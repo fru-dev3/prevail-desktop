@@ -420,6 +420,8 @@ pub fn run() {
             appcmds::write_text_file,
             appcmds::read_text_file,
             appcmds::save_pasted_image,
+            appcmds::attachments_index_append,
+            engine::engine_attachments_caption,
             appcmds::spark_archive_append,
             appcmds::spark_archive_read,
             appcmds::app_diagnostics,
