@@ -479,47 +479,27 @@ pub fn notify_user(app: tauri::AppHandle, title: String, body: String) -> Result
 }
 
 /// Streaming NDJSON variant that ALSO writes a body to the child's stdin
-/// before streaming stdout. This is the chat counterpart to
-/// `run_engine_stream` — `prevail chat` reads the user message from stdin
-/// (so multi-line / arbitrary content needs no shell-quoting) and emits a
-/// ChatEvent NDJSON stream on stdout. Mirrors the spawn/stream/emit pattern
-/// of `run_engine_stream`; the only difference is the piped + written stdin.
+/// Apply the full engine spawn environment (PATH/USER/LOGNAME, Bunker/Vault-Lock
+/// gating, provider + app-secret + gateway keys, vault key/root, browser + skill
+/// paths) to `cmd`. Extracted so every engine spawn that needs the grounded env
+/// (streaming chat AND the Telegram bridge's collect path) stays byte-identical:
+/// there is exactly one place that decides which secrets the engine sees.
 ///
-/// Each parsed stdout line is emitted on `<event_prefix>:line` as
-/// `{ "session", "data": <ChatEvent> }`; stderr lines as
-/// `{ "session", "stream": "stderr", "data": <line> }`; child exit fires
-/// `<event_prefix>:done` with `{ "session", "code" }`.
-pub async fn run_engine_stream_stdin(
-    app: tauri::AppHandle,
-    session: String,
-    args: Vec<String>,
-    stdin_body: String,
-    event_prefix: &'static str,
-    extra_env: Vec<(&'static str, String)>,
-) -> Result<(), String> {
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-    use tokio::process::Command as TokioCommand;
-
-    let bin = resolve_prevail_bin();
-    let (combined_path, user, logname) = crate::build_cli_env();
-
-    let mut full = args;
-    full.push("--json".to_string());
-
-    let mut cmd = TokioCommand::new(&bin);
-    cmd.args(&full)
-        .env_clear()
+/// Bunker Mode: sets PREVAIL_BUNKER=1 and withholds ALL cloud provider/app/gateway
+/// keys, so the engine physically cannot reach a cloud gateway. `extra_env` is
+/// applied last (local-only overrides such as PREVAIL_OLLAMA_URL).
+fn apply_engine_env(
+    cmd: &mut tokio::process::Command,
+    combined_path: String,
+    user: String,
+    logname: String,
+    extra_env: &[(&'static str, String)],
+) {
+    cmd.env_clear()
         .envs(crate::scrubbed_env_pairs())
         .env("PATH", combined_path)
         .env("USER", user)
-        .env("LOGNAME", logname)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    // Bunker Mode: tell the engine to self-enforce local-only (defense in depth
-    // alongside the --local-only flag), and CRUCIALLY do not hand it any cloud
-    // provider keys — with no key the engine physically cannot reach a cloud
-    // gateway even if some path tried to.
+        .env("LOGNAME", logname);
     // Vault Lock: orthogonal to Bunker. Tell the engine to keep all file access
     // inside the vault directory.
     if crate::vault_lock::vault_lock_enabled() {
@@ -565,7 +545,7 @@ pub async fn run_engine_stream_stdin(
     // Per-call env overrides (e.g. PREVAIL_OLLAMA_URL redirect so the engine's
     // local provider path reaches LM Studio / MLX instead of Ollama). Local-only,
     // so safe under Bunker Mode.
-    for (k, v) in &extra_env {
+    for (k, v) in extra_env {
         cmd.env(k, v);
     }
     if let Some(k) = vault_key() {
@@ -580,6 +560,198 @@ pub async fn run_engine_stream_stdin(
     if let Some(p) = skill_packs_path() {
         cmd.env("PREVAIL_SKILL_PACKS_DIR", p);
     }
+}
+
+/// Build the argv for a one-shot grounded `prevail chat` turn (pure, unit-tested).
+/// `--vault V` precedes the `chat` subcommand, matching every other engine command.
+/// `--json` is appended by the spawn helper, not here.
+pub(crate) fn build_engine_chat_argv(
+    vault: &str,
+    domain: &str,
+    cli: Option<&str>,
+    model: Option<&str>,
+    local_only: bool,
+) -> Vec<String> {
+    let mut args = vec![
+        "--vault".to_string(),
+        vault.to_string(),
+        "chat".to_string(),
+        "--domain".to_string(),
+        domain.to_string(),
+    ];
+    if let Some(c) = cli.filter(|s| !s.is_empty()) {
+        args.push("--cli".to_string());
+        args.push(c.to_string());
+    }
+    if let Some(m) = model.filter(|s| !s.is_empty()) {
+        args.push("--model".to_string());
+        args.push(m.to_string());
+    }
+    if local_only {
+        args.push("--local-only".to_string());
+    }
+    args
+}
+
+/// Run ONE grounded `prevail chat` turn and collect the assistant reply as text.
+///
+/// This is the Telegram/messaging-bridge counterpart to `run_engine_stream_stdin`:
+/// instead of streaming ChatEvents to the UI, it spawns the sidecar, writes the
+/// (already fenced) message to stdin, drains the NDJSON stdout, and returns the
+/// finalized assistant text. Routing the bridge through here means replies get
+/// vault memory + domain grounding + tools instead of a raw, contextless model
+/// spawn. Read-only by default at the engine layer (consequential writes queue
+/// for approval), which matches the bridge's untrusted-channel intent.
+///
+/// The full engine env (provider keys, vault key/root, Bunker/Vault-Lock gating)
+/// is applied via `apply_engine_env`, so grounding + secret handling match the
+/// desktop chat exactly. Under Bunker Mode the argv gains `--local-only`.
+pub async fn engine_chat_collect(
+    vault: &str,
+    domain: &str,
+    cli: Option<&str>,
+    model: Option<&str>,
+    message: &str,
+) -> Result<String, String> {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::process::Command as TokioCommand;
+
+    let bin = resolve_prevail_bin();
+    let (combined_path, user, logname) = crate::build_cli_env();
+
+    let local_only = crate::bunker::bunker_enabled();
+    let mut full = build_engine_chat_argv(vault, domain, cli, model, local_only);
+    full.push("--json".to_string());
+
+    let mut cmd = TokioCommand::new(&bin);
+    cmd.args(&full)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    apply_engine_env(&mut cmd, combined_path, user, logname, &[]);
+
+    let mut child = cmd.spawn().map_err(|e| format!("spawn {bin} failed: {e}"))?;
+
+    // Feed the user message on stdin, then EOF (matches the chat-json contract:
+    // the message is read from stdin when no --message flag is present).
+    if let Some(mut stdin) = child.stdin.take() {
+        let body = message.to_string();
+        tauri::async_runtime::spawn(async move {
+            let _ = stdin.write_all(body.as_bytes()).await;
+            let _ = stdin.shutdown().await;
+        });
+    }
+
+    // Drain the NDJSON stdout. Prefer the finalized `assistant` event's full text;
+    // fall back to accumulated `delta` text if no assistant event arrives. An
+    // `error` event surfaces the engine's reason.
+    let mut assistant_text: Option<String> = None;
+    let mut deltas = String::new();
+    let mut engine_error: Option<String> = None;
+    if let Some(out) = child.stdout.take() {
+        let mut lines = BufReader::new(out).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let Ok(ev) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+                continue;
+            };
+            match ev.get("type").and_then(|t| t.as_str()) {
+                Some("delta") => {
+                    if let Some(t) = ev.get("text").and_then(|t| t.as_str()) {
+                        deltas.push_str(t);
+                    }
+                }
+                Some("assistant") => {
+                    if let Some(t) = ev.get("text").and_then(|t| t.as_str()) {
+                        assistant_text = Some(t.to_string());
+                    }
+                }
+                Some("error") => {
+                    engine_error = Some(
+                        ev.get("error")
+                            .and_then(|e| e.as_str())
+                            .unwrap_or("engine chat error")
+                            .to_string(),
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Drain stderr for a fallback error detail.
+    let mut stderr_tail = String::new();
+    if let Some(err) = child.stderr.take() {
+        let mut lines = BufReader::new(err).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if !line.trim().is_empty() {
+                stderr_tail = line;
+            }
+        }
+    }
+
+    let status = child.wait().await.map_err(|e| format!("wait {bin}: {e}"))?;
+
+    let reply = assistant_text
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| Some(deltas.clone()).filter(|s| !s.trim().is_empty()));
+
+    match reply {
+        Some(r) => Ok(r),
+        None => {
+            if let Some(e) = engine_error {
+                Err(e)
+            } else if !status.success() {
+                let code = status.code().unwrap_or(-1);
+                let detail = if stderr_tail.is_empty() {
+                    "(no output)".to_string()
+                } else {
+                    stderr_tail
+                };
+                Err(format!("prevail chat exited {code}: {detail}"))
+            } else {
+                Err("engine chat produced no reply".to_string())
+            }
+        }
+    }
+}
+
+/// before streaming stdout. This is the chat counterpart to
+/// `run_engine_stream` — `prevail chat` reads the user message from stdin
+/// (so multi-line / arbitrary content needs no shell-quoting) and emits a
+/// ChatEvent NDJSON stream on stdout. Mirrors the spawn/stream/emit pattern
+/// of `run_engine_stream`; the only difference is the piped + written stdin.
+///
+/// Each parsed stdout line is emitted on `<event_prefix>:line` as
+/// `{ "session", "data": <ChatEvent> }`; stderr lines as
+/// `{ "session", "stream": "stderr", "data": <line> }`; child exit fires
+/// `<event_prefix>:done` with `{ "session", "code" }`.
+pub async fn run_engine_stream_stdin(
+    app: tauri::AppHandle,
+    session: String,
+    args: Vec<String>,
+    stdin_body: String,
+    event_prefix: &'static str,
+    extra_env: Vec<(&'static str, String)>,
+) -> Result<(), String> {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::process::Command as TokioCommand;
+
+    let bin = resolve_prevail_bin();
+    let (combined_path, user, logname) = crate::build_cli_env();
+
+    let mut full = args;
+    full.push("--json".to_string());
+
+    let mut cmd = TokioCommand::new(&bin);
+    cmd.args(&full)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    apply_engine_env(&mut cmd, combined_path, user, logname, &extra_env);
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("spawn {bin} failed: {e}"))?;
@@ -3180,5 +3352,48 @@ mod vault_key_state_tests {
         let r2 = serde_json::json!({ "ok": true, "key": "INLINE==" });
         assert_eq!(read_dek_from_unlock(&r2).unwrap().as_deref(), Some("INLINE=="));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // The Telegram bridge routes replies through the engine so they get vault
+    // memory + domain grounding. The argv must carry the vault, the `chat`
+    // subcommand, and the resolved domain (with `--vault` BEFORE the subcommand).
+    #[test]
+    fn engine_chat_argv_is_vault_grounded() {
+        let args = build_engine_chat_argv(
+            "/Users/x/vault",
+            "wealth",
+            Some("claude"),
+            Some("sonnet"),
+            false,
+        );
+        // --vault precedes the subcommand.
+        assert_eq!(args[0], "--vault");
+        assert_eq!(args[1], "/Users/x/vault");
+        let vault_i = args.iter().position(|a| a == "--vault").unwrap();
+        let chat_i = args.iter().position(|a| a == "chat").unwrap();
+        assert!(vault_i < chat_i, "--vault must come before `chat`");
+        // Domain grounding is present with the resolved domain as its value.
+        let dom_i = args.iter().position(|a| a == "--domain").unwrap();
+        assert_eq!(args[dom_i + 1], "wealth");
+        // Configured cli/model are forwarded.
+        let cli_i = args.iter().position(|a| a == "--cli").unwrap();
+        assert_eq!(args[cli_i + 1], "claude");
+        let model_i = args.iter().position(|a| a == "--model").unwrap();
+        assert_eq!(args[model_i + 1], "sonnet");
+        // Not local-only when the flag is false.
+        assert!(!args.iter().any(|a| a == "--local-only"));
+    }
+
+    #[test]
+    fn engine_chat_argv_local_only_and_optional_flags() {
+        // No cli/model, local-only true (Bunker).
+        let args = build_engine_chat_argv("/v", "general", None, None, true);
+        assert!(args.iter().any(|a| a == "--local-only"));
+        assert!(!args.iter().any(|a| a == "--cli"));
+        assert!(!args.iter().any(|a| a == "--model"));
+        // Empty cli/model strings are dropped (treated as unset).
+        let args2 = build_engine_chat_argv("/v", "general", Some(""), Some(""), false);
+        assert!(!args2.iter().any(|a| a == "--cli"));
+        assert!(!args2.iter().any(|a| a == "--model"));
     }
 }
