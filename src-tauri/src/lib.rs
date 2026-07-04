@@ -419,6 +419,7 @@ pub fn run() {
             idealstate::append_memory_md,
             appcmds::write_text_file,
             appcmds::read_text_file,
+            appcmds::save_pasted_image,
             appcmds::spark_archive_append,
             appcmds::spark_archive_read,
             appcmds::app_diagnostics,

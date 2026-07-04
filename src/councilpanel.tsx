@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, BookOpen, Check, ChevronRight, Crown, Folder, Ghost, Layers, MessageSquare, PanelRightOpen, Plus, Scale, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { invoke, listen } from "./bridge";
+import { savePastedImages } from "./paste";
 import { titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
 import { isLocalCli, splitThinking, stripAnsi, vendorAccent } from "./helpers";
@@ -277,6 +278,9 @@ export function CouncilPanel({
   }
   // Skills attached to the next convene - same model as Chat.
   const [attachedSkills, setAttachedSkills] = useState<string[]>(() => loadPreferredSkills(domain));
+  // Images pasted into the council composer - saved to the vault, attached to
+  // the next convene as file paths every panelist can read. Cleared on convene.
+  const [pastedFiles, setPastedFiles] = useState<string[]>([]);
   const [preferredSkills, setPreferredSkills] = useState<string[]>(() => loadPreferredSkills(domain));
   useEffect(() => {
     const pref = loadPreferredSkills(domain);
@@ -878,9 +882,13 @@ export function CouncilPanel({
           .slice(-12000) +
         "\n\n--- New question (continue the conversation) ---\n"
       : "";
-    const enrichedPrompt = fwLens.buildPrompt(`${userPreamble}${memoryPreamble}${primedPreamble}${historyPreamble}${skillsPreamble}${trimmed}`);
+    const attachPreamble = pastedFiles.length > 0
+      ? `Attached files (read these as context):\n${pastedFiles.map((f) => `- ${f}`).join("\n")}\n\n`
+      : "";
+    const enrichedPrompt = fwLens.buildPrompt(`${userPreamble}${memoryPreamble}${primedPreamble}${historyPreamble}${skillsPreamble}${attachPreamble}${trimmed}`);
     setPrompt("");
     setAttachedSkills([]);
+    setPastedFiles([]);
     for (const s of panelistSlots) {
       try {
         await invoke("chat_send", {
@@ -1316,9 +1324,29 @@ export function CouncilPanel({
               ))}
             </div>
           )}
+          {/* Pasted images attached to the next convene - visible, removable. */}
+          {pastedFiles.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 px-2">
+              {pastedFiles.map((p) => (
+                <span key={p} title={p} className="inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft py-0.5 pl-1.5 pr-1 font-mono text-[11px] text-accent">
+                  {p.split("/").pop()}
+                  <button
+                    onClick={() => setPastedFiles((cur) => cur.filter((x) => x !== p))}
+                    className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-text-muted hover:bg-surface-warm hover:text-err"
+                    title="Remove attachment"
+                  >×</button>
+                </span>
+              ))}
+            </div>
+          )}
           <textarea
             ref={taRef}
             value={prompt}
+            onPaste={(e) => {
+              void savePastedImages(e, _vaultPath).then(({ paths }) => {
+                if (paths.length) setPastedFiles((cur) => [...cur, ...paths]);
+              });
+            }}
             onChange={(e) => { setPrompt(e.target.value); setCaretPos(e.target.selectionStart ?? e.target.value.length); }}
             onSelect={(e) => syncCaret(e.currentTarget)}
             onKeyUp={(e) => syncCaret(e.currentTarget)}
