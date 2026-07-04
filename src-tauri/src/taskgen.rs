@@ -127,7 +127,9 @@ struct Cursor {
 }
 
 fn cursor_path(domain_dir: &Path) -> PathBuf {
-    domain_dir.join("_taskgen.json")
+    // v4-aware: the taskgen cursor is app plumbing -> .system/ on a migrated
+    // domain, else the legacy flat _taskgen.json.
+    crate::paths::v4_content_path(domain_dir, ".system/taskgen.cursor.json", "_taskgen.json")
 }
 
 fn read_cursor(domain_dir: &Path) -> Cursor {

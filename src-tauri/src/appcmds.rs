@@ -601,8 +601,15 @@ pub(crate) fn save_session(
 
     // Append a one-line summary to _journal.md so the user has a
     // running record of every session without having to open _log/.
-    if let Some(d) = &domain {
-        let journal_path = PathBuf::from(&vault).join(d).join("_journal.md");
+    if domain.is_some() {
+        // v4-aware + resolved: the running-record journal belongs in the domain's
+        // journal (memory/journal.md on a migrated domain), not a stray
+        // <vault>/<domain>/_journal.md at the vault root.
+        let journal_path = crate::paths::v4_content_path(
+            &crate::paths::domain_dir(&vault, &domain),
+            "memory/journal.md",
+            "_journal.md",
+        );
         let first_user = turns.iter()
             .find(|t| t.role == "user")
             .map(|t| t.content.lines().next().unwrap_or("").trim().to_string())

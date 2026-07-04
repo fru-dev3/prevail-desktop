@@ -129,7 +129,9 @@ struct Cursor {
 }
 
 fn cursor_path(domain_dir: &Path) -> PathBuf {
-    domain_dir.join("_skillgen.json")
+    // v4-aware: the skillgen cursor is app plumbing -> .system/ on a migrated
+    // domain, else the legacy flat _skillgen.json.
+    crate::paths::v4_content_path(domain_dir, ".system/skillgen.cursor.json", "_skillgen.json")
 }
 
 fn read_cursor(domain_dir: &Path) -> Cursor {

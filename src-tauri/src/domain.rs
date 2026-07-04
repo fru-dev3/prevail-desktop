@@ -307,8 +307,9 @@ fn context_for_root(root: PathBuf, extra_base: Option<PathBuf>, domain_label: &s
         if parts.is_empty() { None } else { Some(format!("# Journal\n\n{}", parts.join("\n"))) }
     };
 
-    // Recent logs — newest 10 .md files from _log/ (sorted by mtime).
-    let log_dir = root.join("_log");
+    // Recent logs — newest 10 .md files from _log/ (sorted by mtime). v4-aware:
+    // .system/log on a migrated domain, else the legacy _log/.
+    let log_dir = crate::paths::v4_dir_path(&root, ".system/log", "_log");
     let mut recent_logs: Vec<DomainLogEntry> = Vec::new();
     if log_dir.is_dir() {
         if let Ok(it) = read_dir_retry(&log_dir) {
