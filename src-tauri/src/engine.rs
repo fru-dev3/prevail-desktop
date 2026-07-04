@@ -2846,6 +2846,10 @@ pub async fn engine_chat(
     // Economy / Balanced / Quality bias for the Auto router. Only meaningful when
     // model == "auto"; forwarded verbatim as --route-bias. None => engine default.
     #[allow(non_snake_case)] routeBias: Option<String>,
+    // The user's Google-account chip selection (composer Modes). Forwarded as
+    // --google-account so the google_workspace connector targets the chosen
+    // account authoritatively. Comma-joined for multiple; None => default account.
+    #[allow(non_snake_case)] googleAccount: Option<String>,
 ) -> Result<(), String> {
     // Build the arg vector. `--vault V` goes BEFORE the subcommand,
     // matching every other engine command here.
@@ -2903,6 +2907,13 @@ pub async fn engine_chat(
         args.push("--route-bias".to_string());
         args.push(b);
     }
+    // Forward the picked Google account(s) so the connector targets them. Safe to
+    // pass on every turn: the engine only wires it into the google_workspace
+    // launch, and absent it falls back to today's default-account behavior.
+    if let Some(g) = googleAccount.filter(|s| !s.trim().is_empty()) {
+        args.push("--google-account".to_string());
+        args.push(g);
+    }
 
     run_engine_stream_stdin(app, session, args, message, "engine-chat", extra_env).await
 }
@@ -2925,6 +2936,10 @@ pub async fn engine_agent_run(
     model: Option<String>,
     #[allow(non_snake_case)] taskId: Option<String>,
     autonomy: Option<String>,
+    // The user's Google-account chip selection (composer Modes). Forwarded as
+    // --google-account so an agentic google_workspace action targets the chosen
+    // account authoritatively. Comma-joined for multiple; None => default account.
+    #[allow(non_snake_case)] googleAccount: Option<String>,
 ) -> Result<(), String> {
     // A harness agent reaches the network and may take actions; Bunker Mode's
     // no-network guarantee forbids that outright.
@@ -2960,6 +2975,12 @@ pub async fn engine_agent_run(
     };
     args.push("--autonomy".to_string());
     args.push(auto.to_string());
+    // Forward the picked Google account(s) so an agentic google_workspace action
+    // targets them. Absent => today's default-account behavior.
+    if let Some(g) = googleAccount.filter(|s| !s.trim().is_empty()) {
+        args.push("--google-account".to_string());
+        args.push(g);
+    }
 
     run_engine_stream(app, session, args, "engine-agent").await
 }
