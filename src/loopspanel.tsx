@@ -800,7 +800,12 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                         </li>
                       ))}
                     </ul>
-                  ) : <div className="text-[12px] text-text-muted">No new actions this pass. The gap looks handled.</div>}
+                  ) : (
+                    // Honest empty state: only claim the gap is handled when the
+                    // run's own note says so; otherwise report the emptiness
+                    // plainly (the note above carries the engine's real reason).
+                    <div className="text-[12px] text-text-muted">{result.note ? "No new actions this pass." : "No actions returned this pass. The loop did not verify anything - add domain context (ideal state, state) so it has evidence to work from."}</div>
+                  )}
                   {!result.briefing && <div className="mt-2 font-mono text-[10px] text-text-muted">{result.tasksCreated.length} task{result.tasksCreated.length === 1 ? "" : "s"} filed · {result.pending.length} awaiting approval</div>}
                 </>
               ) : <div className="text-[12px] text-err">Run failed: {result.error}</div>}
