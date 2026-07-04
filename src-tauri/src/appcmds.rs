@@ -391,6 +391,42 @@ pub(crate) fn read_text_file(path: String) -> Result<String, String> {
     read_to_string_retry(&path).map_err(|e| format!("read {path}: {e}"))
 }
 
+/// Append pasted-attachment index records (one JSON object per image) to the
+/// shared ledger <vault>/build/_meta/attachments/index.jsonl. Written at SEND
+/// time, when the conversation context (domain/thread/session/message) is
+/// known, with vault-RELATIVE file paths so records survive the vault living
+/// at different roots per machine. The engine's captioning pass reads and
+/// enriches the same file.
+#[tauri::command]
+pub(crate) fn attachments_index_append(
+    vault: String,
+    records: Vec<serde_json::Value>,
+) -> Result<(), String> {
+    if records.is_empty() {
+        return Ok(());
+    }
+    let dir = Path::new(&vault).join("build").join("_meta").join("attachments");
+    fs::create_dir_all(&dir).map_err(|e| format!("create attachments dir: {e}"))?;
+    let file = dir.join("index.jsonl");
+    let mut out = String::new();
+    for r in &records {
+        if r.get("file").and_then(|f| f.as_str()).map(|f| !f.trim().is_empty()) == Some(true) {
+            out.push_str(&serde_json::to_string(r).map_err(|e| e.to_string())?);
+            out.push('\n');
+        }
+    }
+    if out.is_empty() {
+        return Ok(());
+    }
+    use std::io::Write as _;
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&file)
+        .map_err(|e| format!("open attachments index: {e}"))?;
+    f.write_all(out.as_bytes()).map_err(|e| format!("append attachments index: {e}"))
+}
+
 /// Save an image pasted into a composer to the vault's attachments dir and
 /// return its absolute path. The path is then attached to the turn like any
 /// file attachment; the model reads it with its (multimodal) file tools. Only

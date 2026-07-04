@@ -1373,6 +1373,17 @@ pub fn engine_skill_archive(domain: String, skill: String, restore: Option<bool>
     run_engine_json(&["skill-usage", action, &domain, &skill, "--json"])
 }
 
+/// Kick one bounded pass of the attachment captioner (Haiku looks at each new
+/// pasted image once, captions it in the index, and renames it semantically).
+/// Fire-and-forget from the send path - a captioning hiccup never disturbs chat.
+#[tauri::command]
+pub async fn engine_attachments_caption() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let _ = run_engine_json(&["attachments", "caption", "--limit", "4", "--json"]);
+    });
+    Ok(())
+}
+
 /// Bind (or clear) an app's account identity - WHICH account of a multi-account
 /// connector this app instance is (e.g. which Google account). Attaching the app
 /// to a chat carries this identity into the turn. Empty label clears the
