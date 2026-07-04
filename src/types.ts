@@ -291,6 +291,19 @@ export interface ChatMessage {
   // records HOW it was produced (not just which model). Shown in the bubble.
   framework?: string;
   lens?: string;
+  // Auto-routing: when the turn was sent with model "auto", the engine's `route`
+  // event fills this in with the model it chose and why. Renders as a routing
+  // chip with a one-click override. Absent on non-auto turns.
+  route?: RouteInfo;
+}
+
+export interface RouteInfo {
+  cli: string;
+  model: string;
+  reason: string;
+  confidence: number;
+  difficulty?: number;
+  bias?: string;
 }
 
 export interface ChatEvent {
@@ -304,6 +317,8 @@ export interface ChatEvent {
   usage?: { input_tokens?: number; output_tokens?: number; cost_usd?: number };
   engine?: string;
   error?: string;
+  // Present only on the `route` event (auto model routing): the chosen model + why.
+  route?: RouteInfo;
 }
 
 export interface SurfaceResult { questions: string[]; actions: string[]; generated_at: number; stale: boolean }

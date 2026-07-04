@@ -15,9 +15,42 @@ import { domainIcon } from "./icons";
 import { ThinkingDots, ThinkingWord, useFrameworkLens } from "./hooks";
 import { extractCliError, renderSkillTokens } from "./textutil";
 import { ProviderMark } from "./marks";
-import type { ChatMessage, DomainContextBundle, DomainToggle } from "./types";
+import type { ChatMessage, DomainContextBundle, DomainToggle, RouteInfo } from "./types";
 
 export const MESSAGE_WINDOW = 80;
+
+// Routing chip for an Auto turn: shows the model the engine chose + why, with a
+// one-click override that pins that concrete model as the runtime's default.
+function RouteChip({ route }: { route: RouteInfo }) {
+  const [pinned, setPinned] = useState(false);
+  const pct = Math.round((route.confidence ?? 0) * 100);
+  const pin = () => {
+    if (!route.cli || !route.model) return;
+    // Replace the "auto" default for this runtime with the concrete model, so the
+    // next turn runs it directly (the composer reads this key live at send time).
+    setPref(`prevail.model.${route.cli}`, route.model);
+    window.dispatchEvent(new Event("prevail:models-refreshed"));
+    setPinned(true);
+  };
+  const detail = [route.reason, `${pct}% confidence`].filter(Boolean).join(" · ");
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] text-accent"
+      title={`Auto routed to ${route.model} · ${detail}`}
+    >
+      <Sparkles className="h-2.5 w-2.5" />
+      Auto <ArrowRight className="h-2.5 w-2.5" /> {modelLabel(route.cli, route.model)}
+      {route.reason && <span className="hidden text-accent/70 sm:inline">· {route.reason}</span>}
+      <button
+        onClick={pin}
+        title={pinned ? "Pinned as this runtime's default" : `Always use ${route.model} on ${route.cli}`}
+        className="ml-0.5 rounded px-1 text-[9px] uppercase tracking-wider transition-colors hover:bg-accent hover:text-background"
+      >
+        {pinned ? "pinned" : "pin"}
+      </button>
+    </span>
+  );
+}
 
 export function ChatBubble({
   msg,
@@ -148,7 +181,8 @@ export function ChatBubble({
           <span className="font-display font-semibold tracking-tight" style={{ color: accent }}>{vendorName}</span>
           {/* I9: which model + how it was shaped (framework/lens) - so each turn
               is self-describing, not a mystery. */}
-          {msg.role === "assistant" && msg.model && (
+          {msg.role === "assistant" && msg.route && <RouteChip route={msg.route} />}
+          {msg.role === "assistant" && msg.model && !msg.route && (
             <span className="font-mono text-[10px] lowercase text-text-muted" title={`Model: ${msg.model}`}>{modelLabel(msg.cli, msg.model)}</span>
           )}
           {msg.role === "assistant" && msg.framework && (

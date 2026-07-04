@@ -2843,6 +2843,9 @@ pub async fn engine_chat(
     // the engine hard-blocks web for this turn (--web deny). None => the engine
     // falls back to its own global setting.
     web: Option<bool>,
+    // Economy / Balanced / Quality bias for the Auto router. Only meaningful when
+    // model == "auto"; forwarded verbatim as --route-bias. None => engine default.
+    #[allow(non_snake_case)] routeBias: Option<String>,
 ) -> Result<(), String> {
     // Build the arg vector. `--vault V` goes BEFORE the subcommand,
     // matching every other engine command here.
@@ -2893,6 +2896,12 @@ pub async fn engine_chat(
         Some(true) => { args.push("--web".to_string()); args.push("allow".to_string()); }
         Some(false) => { args.push("--web".to_string()); args.push("deny".to_string()); }
         None => {}
+    }
+    // Forward the router bias when set. The engine ignores it unless the model is
+    // the "auto" sentinel, so this is safe to pass on every turn.
+    if let Some(b) = routeBias.filter(|s| !s.is_empty()) {
+        args.push("--route-bias".to_string());
+        args.push(b);
     }
 
     run_engine_stream_stdin(app, session, args, message, "engine-chat", extra_env).await

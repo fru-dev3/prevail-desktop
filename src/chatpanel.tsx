@@ -1375,6 +1375,22 @@ export function ChatPanel({
               });
               break;
             }
+            case "route": {
+              // Auto model routing: the engine chose a concrete model. Stash the
+              // decision (for the routing chip) and update the bubble's model +
+              // cli label from "auto" to what actually ran.
+              if (ev.route) {
+                const r = ev.route;
+                setMessages((m) => {
+                  const last = m[m.length - 1];
+                  if (last && last.streaming) {
+                    return [...m.slice(0, -1), { ...last, route: r, model: r.model || last.model, cli: r.cli || last.cli }];
+                  }
+                  return m;
+                });
+              }
+              break;
+            }
             case "error": {
               setMessages((m) => {
                 const last = m[m.length - 1];
@@ -1601,6 +1617,11 @@ export function ChatPanel({
       chatCli = local;
     }
     const chatModel = lsGet(`prevail.model.${chatCli}`) || null;
+    // The "auto" router lives in the engine. On the native chat_send fallback
+    // (no engine) there's nowhere to route, so treat "auto" as the provider
+    // default rather than passing the literal "auto" to a raw CLI (which rejects
+    // it). Non-breaking: any concrete model id is unchanged.
+    const nativeModel = chatModel === "auto" ? null : chatModel;
     const visible = input.trim();
     const userMsg: ChatMessage = { role: "user", content: visible, ts: Date.now() };
     const replyMsg: ChatMessage = { role: "assistant", cli: chatCli, model: chatModel || undefined, framework: fwLens.framework ?? undefined, lens: fwLens.lens ?? undefined, content: "", ts: Date.now(), streaming: true };
@@ -1787,12 +1808,15 @@ export function ChatPanel({
           model: chatModel,
           localOnly,
           web: webAllowed,
+          // Economy / Balanced / Quality bias for the Auto router. Only consulted
+          // by the engine when model === "auto"; harmless otherwise.
+          routeBias: chatModel === "auto" ? getPref("prevail.route.bias", "balanced") : null,
         });
       } else {
         await invoke("chat_send", {
           args: {
             cli: chatCli,
-            model: chatModel,
+            model: nativeModel,
             prompt: promptText,
             session_id: sessionRef.current,
             timeout_sec: (() => { const n = parseInt(getPref(PREF.llmPromptTimeoutSec, "300"), 10); return Number.isFinite(n) && n > 0 ? n : null; })(),
@@ -1811,7 +1835,7 @@ export function ChatPanel({
           await invoke("chat_send", {
             args: {
               cli: chatCli,
-              model: chatModel,
+              model: nativeModel,
               prompt: promptText,
               session_id: sessionRef.current,
               timeout_sec: (() => { const n = parseInt(getPref(PREF.llmPromptTimeoutSec, "300"), 10); return Number.isFinite(n) && n > 0 ? n : null; })(),
