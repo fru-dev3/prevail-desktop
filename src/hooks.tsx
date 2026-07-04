@@ -171,7 +171,7 @@ export function ThinkingDots() {
       <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "0ms" }} />
       <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "150ms" }} />
       <span className="thinking-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "300ms" }} />
-      <span className="ml-1.5 text-xs text-text-muted">{word}…</span>
+      <span className="shimmer-text ml-1.5 text-xs">{word}…</span>
     </span>
   );
 }
