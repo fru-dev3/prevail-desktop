@@ -1880,6 +1880,7 @@ export default function App() {
                 threadDomain={threadScope}
                 isApp={onApp}
                 appId={onApp && selectedApp ? selectedApp.id : null}
+                appAccount={onApp && selectedApp ? selectedApp.account?.label ?? null : null}
                 vaultPath={vaultPath}
                 clis={clis}
                 fwLens={fwLens}

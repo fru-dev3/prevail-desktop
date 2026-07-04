@@ -103,27 +103,34 @@ export function domainTogglesKey(domain: string | null, t: DomainToggle): string
 }
 
 // When the Google app is ATTACHED to a chat but the user has NOT explicitly
-// picked a Google account in Modes, the domain chat should inherit the app's
-// authenticated account so it acts exactly as the app's own chat would. Given
-// the accounts the user explicitly picked and the list of CONNECTED accounts,
-// return the account label(s) to send as `googleAccount` (comma-joined), or null
-// to leave it unset. Machine-agnostic: labels are whatever gws profiles exist on
-// this machine, never specific addresses. Never guesses between identities:
+// picked a Google account in Modes, the chat should inherit the app's
+// authenticated identity so it acts exactly as the app's own chat would. Given
+// the accounts the user explicitly picked, the list of CONNECTED accounts, and
+// the attached app's own account BINDING (manifest.account - "this app instance
+// IS gmail-personal"), return the account label(s) to send as `googleAccount`
+// (comma-joined), or null to leave it unset. Machine-agnostic: labels are
+// whatever profiles exist on this machine, never specific addresses. Never
+// guesses between identities:
 //   - an explicit pick always wins (returned verbatim);
-//   - otherwise, if Google is attached and EXACTLY ONE account is connected,
-//     inherit it (unambiguous, zero friction), whatever its label;
-//   - with TWO OR MORE connected and no pick, null: acting as the wrong account
-//     is worse than asking. The engine connector then refuses with the connected
-//     labels, and the composer account chip is how the user chooses;
+//   - else the attached app's binding: the app instance IS that identity, so
+//     attaching it is itself an explicit choice (multi-instance connectors);
+//   - else, if Google is attached and EXACTLY ONE account is connected, inherit
+//     it (unambiguous, zero friction), whatever its label;
+//   - with TWO OR MORE connected, no pick, no binding: null - acting as the
+//     wrong account is worse than asking. The engine connector then refuses
+//     with the connected labels, and the composer account chip is the pick;
 //   - otherwise null (no app attached / nothing connected -> unchanged behavior).
 export function inheritedGoogleAccount(
   picked: string[],
   connected: string[],
   googleAttached: boolean,
+  boundAccount?: string | null,
 ): string | null {
   const explicit = picked.filter((s) => typeof s === "string" && s.trim());
   if (explicit.length > 0) return explicit.join(",");
   if (!googleAttached) return null;
+  const bound = (boundAccount ?? "").trim();
+  if (bound) return bound;
   const conn = connected.filter((s) => typeof s === "string" && s.trim());
   if (conn.length === 1) return conn[0]!;
   return null;
