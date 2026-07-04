@@ -84,6 +84,7 @@ export function ChatPanel({
   isApp,
   appId,
   appAccount,
+  appRuntime,
   vaultPath,
   clis,
   fwLens,
@@ -118,6 +119,9 @@ export function ChatPanel({
   // a multi-account connector this app instance IS. Carried into the turn so an
   // app chat authenticates as its bound identity without a chip pick.
   appAccount?: string | null;
+  // The open app's pinned runtime (manifest.runtime) - which AI runtime serves
+  // its chats (the pass-through lane routing).
+  appRuntime?: string | null;
   vaultPath: string;
   clis: CliInfo[];
   fwLens: ReturnType<typeof useFrameworkLens>;
@@ -1775,7 +1779,14 @@ export function ChatPanel({
     setInput("");
     sessionRef.current = `s-${Date.now()}`;
     rawReplyRef.current = ""; // fresh raw-output buffer for this turn
-    const turnModel = chatModel;
+    // Pass-through routing: an app pinned to a runtime (Connections lane) runs
+    // its chats ON that runtime - its account-side connectors (ChatGPT apps,
+    // claude.ai connectors) exist only inside that runtime's sessions. When the
+    // pin differs from the picker, the model falls back to the pinned runtime's
+    // default (the picked model id belongs to the other runtime).
+    const laneCli = isApp && appRuntime && appRuntime.trim() ? appRuntime.trim() : null;
+    const sendCli = laneCli ?? chatCli;
+    const turnModel = laneCli && laneCli !== chatCli ? "" : chatModel;
     // Snapshot this turn's meta for usage capture (P4.7 Phase 3). Read at
     // 'done' regardless of which path (engine vs native) serves the reply.
     pendingUsageRef.current = {
@@ -1783,7 +1794,7 @@ export function ChatPanel({
       vault: vaultPath,
       domain: domain ?? null,
       thread: activeThreadRef.current,
-      cli: chatCli ?? null,
+      cli: sendCli ?? null,
       model: turnModel,
       intent: visible,
     };
@@ -1819,7 +1830,7 @@ export function ChatPanel({
         session: sessionRef.current,
         domain: domain ?? null,
         thread: activeThreadRef.current,
-        cli: chatCli ?? null,
+        cli: sendCli ?? null,
         model: turnModel,
         // Provenance surface: which composer this came from. host/app/version/
         // os/engine are stamped server-side by intent_append.
@@ -1880,7 +1891,7 @@ export function ChatPanel({
     const ENGINE_ONLY = new Set(["openrouter", "lmstudio", "mlx"]);
     // Use the engine when we're in a domain, OR when the chosen provider can only
     // run through the engine (so General + OpenRouter/LM Studio/MLX works).
-    const useEngine = ENGINE_CHAT_ENABLED && engineAvailable && (!!domain || (!!chatCli && ENGINE_ONLY.has(chatCli)));
+    const useEngine = ENGINE_CHAT_ENABLED && engineAvailable && (!!domain || (!!sendCli && ENGINE_ONLY.has(sendCli)));
     // The engine treats General as the "general" domain (general_dir), so a
     // null/empty domain maps to that here.
     const engineDomain = domain || "general";
@@ -1910,7 +1921,7 @@ export function ChatPanel({
     // attached Google app in this conversation carries one (domain chat) - see
     // boundGoogleAccount above.
     const googleAccountArg = inheritedGoogleAccount(pickedGoogleAccounts, googleConnectedAccounts, googleInContext, boundGoogleAccount);
-    if (chatCli && ENGINE_ONLY.has(chatCli) && !useEngine) {
+    if (sendCli && ENGINE_ONLY.has(sendCli) && !useEngine) {
       const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "oMLX";
       setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which isn't available right now. Make sure the Prevail engine is installed, then try again.`, ts: Date.now(), cli: chatCli, model: chatModel ?? undefined }]);
       onStreamEnd(sessionRef.current);
@@ -1936,8 +1947,8 @@ export function ChatPanel({
           vault: vaultPath,
           domain: engineDomain,
           goal: agentGoal,
-          cli: chatCli || null,
-          model: chatModel,
+          cli: sendCli || null,
+          model: turnModel,
           autonomy: "auto",
           // Authoritative default account for the google_workspace connector.
           googleAccount: googleAccountArg,
@@ -1948,16 +1959,16 @@ export function ChatPanel({
           vault: vaultPath,
           domain: engineDomain,
           message: promptText,
-          cli: chatCli || null,
-          model: chatModel,
+          cli: sendCli || null,
+          model: turnModel,
           localOnly,
           web: webAllowed,
           // Economy / Balanced / Quality bias for the Auto router. Only consulted
           // by the engine when model === "auto"; harmless otherwise.
-          routeBias: chatModel === "auto" ? getPref("prevail.route.bias", "balanced") : null,
+          routeBias: turnModel === "auto" ? getPref("prevail.route.bias", "balanced") : null,
           // Layer 4 cascade escalation (opt-in, default off). Only consulted by the
           // engine when model === "auto"; harmless otherwise.
-          routeCascade: chatModel === "auto" ? getPref("prevail.route.cascade", "0") === "1" : null,
+          routeCascade: turnModel === "auto" ? getPref("prevail.route.cascade", "0") === "1" : null,
           // Authoritative default account for the google_workspace connector.
           googleAccount: googleAccountArg,
           // App chats also see the user's own Claude Code MCP connectors - the
@@ -1968,7 +1979,7 @@ export function ChatPanel({
       } else {
         await invoke("chat_send", {
           args: {
-            cli: chatCli,
+            cli: sendCli,
             model: nativeModel,
             prompt: promptText,
             session_id: sessionRef.current,
