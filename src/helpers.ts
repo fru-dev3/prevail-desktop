@@ -101,3 +101,28 @@ export function looksLikeJudgmentCall(text: string): boolean {
 export function domainTogglesKey(domain: string | null, t: DomainToggle): string {
   return `prevail.desktop.domain.${domain || "__general__"}.${t}`;
 }
+
+// When the Google app is ATTACHED to a chat but the user has NOT explicitly
+// picked a Google account in Modes, the domain chat should inherit the app's
+// authenticated account so it acts exactly as the app's own chat would. Given
+// the accounts the user explicitly picked and the list of CONNECTED accounts,
+// return the account label(s) to send as `googleAccount` (comma-joined), or null
+// to leave it unset:
+//   - an explicit pick always wins (returned verbatim);
+//   - otherwise, if Google is attached and at least one account is connected,
+//     inherit ONE account: the default profile if it is connected (least
+//     surprising, matches the app chat), else the first connected account (the
+//     domain-chat fix for a user who only authorized a labeled account);
+//   - otherwise null (no app attached / nothing connected -> unchanged behavior).
+export function inheritedGoogleAccount(
+  picked: string[],
+  connected: string[],
+  googleAttached: boolean,
+): string | null {
+  const explicit = picked.filter((s) => typeof s === "string" && s.trim());
+  if (explicit.length > 0) return explicit.join(",");
+  if (!googleAttached) return null;
+  const conn = connected.filter((s) => typeof s === "string" && s.trim());
+  if (conn.length === 0) return null;
+  return conn.includes("default") ? "default" : conn[0]!;
+}
