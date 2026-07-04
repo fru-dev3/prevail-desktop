@@ -1485,13 +1485,15 @@ export function ChatPanel({
                 if (step && step.id) {
                   const i = steps.findIndex((s) => s.id === step.id);
                   if (step.status === "running") {
-                    if (i === -1) steps.push({ id: step.id, label: step.label || note || "Working", status: "running", startedAt: Date.now() });
-                    else steps[i] = { ...steps[i], label: step.label || steps[i].label };
+                    if (i === -1) steps.push({ id: step.id, label: step.label || note || "Working", status: "running", startedAt: Date.now(), detail: step.detail });
+                    else steps[i] = { ...steps[i], label: step.label || steps[i].label, detail: step.detail ?? steps[i].detail };
                   } else if (i !== -1) {
-                    steps[i] = { ...steps[i], status: step.status, endedAt: Date.now(), label: step.label || steps[i].label };
+                    // A failed result's detail is the error snippet - it replaces
+                    // the call-time detail; a success keeps what was shown.
+                    steps[i] = { ...steps[i], status: step.status, endedAt: Date.now(), label: step.label || steps[i].label, detail: step.detail ?? steps[i].detail };
                   } else {
                     // A result with no prior running step (rare): show it already finished.
-                    steps.push({ id: step.id, label: step.label || note || "Working", status: step.status, startedAt: Date.now(), endedAt: Date.now() });
+                    steps.push({ id: step.id, label: step.label || note || "Working", status: step.status, startedAt: Date.now(), endedAt: Date.now(), detail: step.detail });
                   }
                 } else {
                   // Legacy text-only tool note (agent path): a completed step.
@@ -3240,9 +3242,9 @@ export function ChatPanel({
               onClick={() => setPlanMode((v) => !v)}
               title={planMode ? "Plan mode on: the AI will propose a plan and wait before acting" : "Plan mode: get an editable plan before the AI acts"}
               aria-pressed={planMode}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${planMode ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-background text-text-muted hover:text-accent"}`}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${planMode ? "border-accent bg-accent font-semibold text-background shadow-sm" : "border-border bg-background text-text-muted hover:text-accent"}`}
             >
-              <ListChecks className="h-3.5 w-3.5" /> Plan
+              <ListChecks className="h-3.5 w-3.5" /> {planMode ? "Plan on" : "Plan"}
             </button>
             <div className="flex-1" />
 

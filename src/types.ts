@@ -325,7 +325,7 @@ export interface ChatEvent {
   tool?: { name?: string; input?: unknown; output?: unknown };
   // Structured live step (a real tool call), streamed on `type: "tool"` so the UI
   // can render a checklist of what the model is doing. Matched by `id`.
-  step?: { id: string; label: string; status: "running" | "done" | "failed" };
+  step?: { id: string; label: string; status: "running" | "done" | "failed"; detail?: string };
   // The model's declared plan (from TodoWrite), rendered as a header above the
   // checklist. Also arrives on `type: "tool"` events.
   plan?: string[];
@@ -343,6 +343,9 @@ export interface ChatStep {
   status: "running" | "done" | "failed";
   startedAt: number;
   endedAt?: number;
+  // The concrete target of the call (query / file / command / connector argv)
+  // while running; replaced by the error snippet when the step fails.
+  detail?: string;
 }
 
 export interface SurfaceResult { questions: string[]; actions: string[]; generated_at: number; stale: boolean }
