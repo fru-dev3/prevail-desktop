@@ -30,6 +30,27 @@ pub(crate) fn data_root(vault: &str) -> PathBuf {
     }
 }
 
+// App-scope conversation keys. The desktop gives an open app its OWN thread space
+// keyed `_app-<id>` (App.tsx, chatpanel.tsx) so app chats live in the app's space,
+// independent of any domain. That key is NOT a domain: resolving it like one would
+// materialize a shadow folder under data/domains/_app-<id>, shadowing the real app
+// at data/apps/<id>. Instead route `_app-<id>` to the app's OWN space under
+// data/apps/<id>/_scope. MUST mirror the engine's appScopeId + resolveDomainDir
+// (path-safety.ts) exactly so the desktop READS app-scope threads/journal from the
+// same place the engine WRITES them; a split would lose app chat history.
+pub(crate) const APP_SCOPE_PREFIX: &str = "_app-";
+pub(crate) const APP_SCOPE_SUBDIR: &str = "_scope";
+
+// The app id for an `_app-<id>` scope key, or None for a normal domain. Rejects
+// ids that could escape the apps container.
+pub(crate) fn app_scope_id(d: &str) -> Option<String> {
+    let id = d.strip_prefix(APP_SCOPE_PREFIX)?;
+    if id.is_empty() || id.contains('/') || id.contains('\\') || id.contains("..") {
+        return None;
+    }
+    Some(id.to_string())
+}
+
 // v4 layout (source/ · memory/ · .system/). A domain is v4 once the migrator has
 // dropped this marker; until then every vault reads/writes the legacy flat names,
 // so this is a no-op on un-migrated vaults.
@@ -84,6 +105,13 @@ pub(crate) fn runtime_path(vault: &str, name: &str) -> PathBuf {
 // to the vault root (which is what left root-level domain folders behind).
 // Mirrors the engine's resolveDomainDir.
 pub(crate) fn resolve_domain_base(vault: &str, d: &str) -> PathBuf {
+    // App-scope keys (`_app-<id>`) belong with the app, not among domains. Route
+    // them to data/apps/<id>/_scope so no data/domains/_app-<id> shadow appears
+    // and the desktop reads the SAME location the engine writes. Mirrors the
+    // engine's resolveDomainDir.
+    if let Some(id) = app_scope_id(d) {
+        return data_root(vault).join("apps").join(id).join(APP_SCOPE_SUBDIR);
+    }
     let v4 = data_root(vault).join("domains").join(d);
     if v4.exists() {
         return v4;
@@ -262,5 +290,37 @@ mod v4_path_tests {
         assert_eq!(p, d.join("memory").join("state.md"));
         assert!(d.join("memory").is_dir());
         let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn app_scope_id_strips_prefix_and_rejects_traversal() {
+        assert_eq!(app_scope_id("_app-google").as_deref(), Some("google"));
+        assert_eq!(app_scope_id("_app-composio-notion").as_deref(), Some("composio-notion"));
+        assert_eq!(app_scope_id("health"), None);
+        assert_eq!(app_scope_id("_appstore"), None); // no hyphen -> not a scope key
+        assert_eq!(app_scope_id("_app-"), None);
+        assert_eq!(app_scope_id("_app-../evil"), None);
+        assert_eq!(app_scope_id("_app-a/b"), None);
+    }
+
+    #[test]
+    fn app_scope_reroutes_into_apps_container_not_domains() {
+        let root = std::env::temp_dir().join(format!("prevail-appscope-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("data").join("apps")).unwrap();
+        fs::create_dir_all(root.join("data").join("domains")).unwrap();
+        let vault = root.to_string_lossy().to_string();
+        // _app-google -> data/apps/google/_scope, never data/domains.
+        let base = resolve_domain_base(&vault, "_app-google");
+        assert_eq!(base, root.join("data").join("apps").join("google").join("_scope"));
+        assert!(!base.to_string_lossy().contains("domains"));
+        // A thread subdir lands with the app.
+        let threads = safe_domain_subdir(&vault, &Some("_app-google".to_string()), "_threads").unwrap();
+        assert_eq!(threads, root.join("data").join("apps").join("google").join("_scope").join("_threads"));
+        // A real domain still resolves under data/domains.
+        fs::create_dir_all(root.join("data").join("domains").join("health")).unwrap();
+        let dom = resolve_domain_base(&vault, "health");
+        assert_eq!(dom, root.join("data").join("domains").join("health"));
+        let _ = fs::remove_dir_all(&root);
     }
 }
