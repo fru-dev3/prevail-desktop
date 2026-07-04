@@ -277,10 +277,12 @@ impl BridgeState {
                                             tokio::time::sleep(Duration::from_secs(4)).await;
                                         }
                                     });
-                                    // Dispatch to the CLI and reply. Keyword-route to a
-                                    // domain first so the exchange is recorded there.
+                                    // Dispatch and reply. Keyword-route to a domain first
+                                    // so the reply is grounded there AND the exchange is
+                                    // recorded there.
                                     let routed_domain = resolve_domain(&cfg, &text);
-                                    let cli_result = run_cli_readonly(&cfg.cli, cfg.model.as_deref(), &fence_untrusted_inbound(&text)).await;
+                                    let fenced = fence_untrusted_inbound(&text);
+                                    let cli_result = dispatch_reply(&cfg, routed_domain.as_deref(), &fenced).await;
                                     typing_task.abort();
                                     match cli_result {
                                         Ok(reply) => {
@@ -714,6 +716,70 @@ pub(crate) async fn run_cli(cli: &str, model: Option<&str>, prompt: &str) -> Res
 /// untrusted-content fence + sender allowlists + the autonomy-off defaults.
 pub(crate) async fn run_cli_readonly(cli: &str, model: Option<&str>, prompt: &str) -> Result<String, String> {
     run_cli_inner(cli, model, prompt, true).await
+}
+
+/// Produce a reply for one inbound (already fenced) bridge message.
+///
+/// FIX A: when a vault is configured, route the message through the Prevail
+/// engine's chat so the reply is grounded in vault memory + the resolved domain
+/// and can use vault tools, instead of a raw, contextless model spawn. The engine
+/// chat is read-only by default (consequential writes queue for approval), which
+/// matches the bridge's untrusted-channel intent, and the inbound is still fenced
+/// + gated by the per-user allow-list upstream.
+///
+/// FALLBACK: with no vault, or if the engine invocation fails / returns nothing,
+/// fall back to the raw read-only CLI so a reply is never lost. The fallback is
+/// recorded in the gateway log for observability.
+async fn dispatch_reply(
+    cfg: &BridgeConfig,
+    domain: Option<&str>,
+    fenced: &str,
+) -> Result<String, String> {
+    if let Some(vault) = cfg.vault.as_deref().filter(|v| !v.is_empty()) {
+        // An empty/omitted domain maps to the engine's first-class "general" space.
+        let dom = domain.filter(|d| !d.trim().is_empty()).unwrap_or("general");
+        match try_engine_reply(cfg, vault, dom, fenced).await {
+            Ok(reply) => return Ok(reply),
+            Err(e) => {
+                crate::gateway_log::append(
+                    vault,
+                    &format!("[telegram] engine reply unavailable, falling back to raw CLI: {e}"),
+                );
+            }
+        }
+    }
+    run_cli_readonly(&cfg.cli, cfg.model.as_deref(), fenced).await
+}
+
+/// Grounded engine reply for one message. Holds a run_cli concurrency permit for
+/// its lifetime (dropped on return, BEFORE any raw fallback re-acquires), and
+/// applies the same Bunker guard the raw path does so behavior is identical under
+/// lockdown. Errors (including an empty reply) bubble up so `dispatch_reply` can
+/// fall back to the raw CLI.
+async fn try_engine_reply(
+    cfg: &BridgeConfig,
+    vault: &str,
+    domain: &str,
+    fenced: &str,
+) -> Result<String, String> {
+    let _permit = RUN_CLI_SEM
+        .acquire()
+        .await
+        .map_err(|_| "run_cli concurrency limiter closed".to_string())?;
+    // Same choke point as run_cli_inner: refuse cloud providers under Bunker Mode.
+    crate::bunker::guard_cli(&cfg.cli)?;
+    let reply = crate::engine::engine_chat_collect(
+        vault,
+        domain,
+        Some(&cfg.cli),
+        cfg.model.as_deref(),
+        fenced,
+    )
+    .await?;
+    if reply.trim().is_empty() {
+        return Err("engine returned an empty reply".to_string());
+    }
+    Ok(reply)
 }
 
 async fn run_cli_inner(cli: &str, model: Option<&str>, prompt: &str, read_only: bool) -> Result<String, String> {

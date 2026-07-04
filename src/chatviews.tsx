@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, ListPlus, NotebookPen, Pin, Repeat, SlidersHorizontal, Sparkles, User } from "lucide-react";
 import { invoke } from "./bridge";
-import { FRAMEWORKS, LENSES } from "./constants";
+import { FRAMEWORKS, LENSES, MODELS } from "./constants";
 import { titleCase } from "./format";
 import { splitThinking, vendorAccent } from "./helpers";
 import { buildQuickActions, modelLabel } from "./helpers2";
@@ -33,9 +33,16 @@ function routeBand(difficulty: number | undefined): "light" | "moderate" | "hard
 // one-click override that pins that concrete model as the runtime's default. The
 // same click also feeds the LEARNED router: it emits a route-override signal so
 // Auto personalizes this bucket (domain + difficulty band) over time.
-function RouteChip({ route }: { route: RouteInfo }) {
+//
+// The "switch" affordance lets the user pick a DIFFERENT model than Auto's pick.
+// That records a REAL from -> to preference (not a self-confirm) so the learned
+// router actually learns, AND re-runs the turn with the chosen model (onRerun) so
+// the user immediately gets the answer from their choice.
+function RouteChip({ route, onRerun }: { route: RouteInfo; onRerun?: () => void }) {
   const [pinned, setPinned] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const pct = Math.round((route.confidence ?? 0) * 100);
+  const band = routeBand(route.difficulty);
   const pin = () => {
     if (!route.cli || !route.model) return;
     // Replace the "auto" default for this runtime with the concrete model, so the
@@ -45,15 +52,35 @@ function RouteChip({ route }: { route: RouteInfo }) {
     // Feed the learned router: record that the user chose this model for this
     // bucket. A ChatPanel listener (which knows the domain + vault) persists it
     // via the route_learn_record engine command. Best-effort, never blocks.
+    // from === to here: a confirm of Auto's own pick (no preference change).
     window.dispatchEvent(new CustomEvent("prevail:route-override", {
-      detail: { band: routeBand(route.difficulty), fromModel: route.model, toModel: route.model },
+      detail: { band, fromModel: route.model, toModel: route.model },
     }));
     setPinned(true);
   };
+  // Pick a DIFFERENT model than Auto chose. Records a genuine from -> to override
+  // (so the learned router sees a real preference for this bucket) AND re-runs the
+  // current turn with the chosen model.
+  const pickModel = (toModel: string) => {
+    setMenuOpen(false);
+    if (!route.cli || !route.model || toModel === route.model) return;
+    // The composer reads prevail.model.<cli> live at send time, so setting it here
+    // makes the re-run below use the chosen model.
+    setPref(`prevail.model.${route.cli}`, toModel);
+    window.dispatchEvent(new Event("prevail:models-refreshed"));
+    window.dispatchEvent(new CustomEvent("prevail:route-override", {
+      detail: { band, fromModel: route.model, toModel },
+    }));
+    // Re-run this turn now so the user gets the answer from their chosen model.
+    onRerun?.();
+  };
+  // Models available for this runtime, minus the Auto sentinel and Auto's own pick
+  // (choosing the same model would be a no-op / confirm, which "pin" already does).
+  const alternatives = (MODELS[route.cli] ?? []).filter((m) => m.id !== "auto" && m.id !== route.model);
   const detail = [route.reason, `${pct}% confidence`].filter(Boolean).join(" · ");
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] text-accent"
+      className="relative inline-flex items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] text-accent"
       title={`Auto routed to ${route.model} · ${detail}`}
     >
       <Sparkles className="h-2.5 w-2.5" />
@@ -66,6 +93,41 @@ function RouteChip({ route }: { route: RouteInfo }) {
       >
         {pinned ? "pinned" : "pin"}
       </button>
+      {alternatives.length > 0 && onRerun && (
+        <button
+          onClick={() => setMenuOpen((o) => !o)}
+          title="Pick a different model and re-run this turn"
+          aria-label="Pick a different model"
+          aria-expanded={menuOpen}
+          className="flex items-center rounded px-0.5 text-[9px] uppercase tracking-wider transition-colors hover:bg-accent hover:text-background"
+        >
+          <SlidersHorizontal className="h-2.5 w-2.5" />
+        </button>
+      )}
+      {menuOpen && (
+        <>
+          {/* Click-away backdrop so a click anywhere else closes the menu. */}
+          <button
+            aria-hidden
+            tabIndex={-1}
+            onClick={() => setMenuOpen(false)}
+            className="fixed inset-0 z-10 cursor-default"
+          />
+          <div className="absolute left-0 top-full z-20 mt-1 min-w-[9rem] overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-lg">
+            <div className="px-2 py-1 text-[9px] uppercase tracking-wider text-text-muted">Re-run with</div>
+            {alternatives.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => pickModel(m.id)}
+                title={m.blurb}
+                className="block w-full px-2 py-1 text-left text-[11px] normal-case text-text-primary transition-colors hover:bg-accent hover:text-background"
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </span>
   );
 }
@@ -199,7 +261,7 @@ export function ChatBubble({
           <span className="font-display font-semibold tracking-tight" style={{ color: accent }}>{vendorName}</span>
           {/* I9: which model + how it was shaped (framework/lens) - so each turn
               is self-describing, not a mystery. */}
-          {msg.role === "assistant" && msg.route && <RouteChip route={msg.route} />}
+          {msg.role === "assistant" && msg.route && <RouteChip route={msg.route} onRerun={onRetry} />}
           {msg.role === "assistant" && msg.model && !msg.route && (
             <span className="font-mono text-[10px] lowercase text-text-muted" title={`Model: ${msg.model}`}>{modelLabel(msg.cli, msg.model)}</span>
           )}
