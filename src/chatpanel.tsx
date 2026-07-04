@@ -1835,6 +1835,29 @@ export function ChatPanel({
         prefs,
       },
     }).catch((e) => console.error("intent_append (intent) failed", e));
+    // Layer-1 attachment intelligence: index every PASTED image riding this
+    // send with its conversation context (vault-relative path so records
+    // survive per-machine vault roots), then kick one bounded Haiku captioning
+    // pass. Both fire-and-forget - never delays the turn.
+    {
+      const pasted = attachments.filter((a) => a.includes("/build/_meta/attachments/") || a.includes("/_paste/"));
+      if (pasted.length > 0) {
+        const rel = (a: string) => (a.startsWith(vaultPath) ? a.slice(vaultPath.length + 1).replace(/^\/+/, "") : a);
+        void invoke("attachments_index_append", {
+          vault: vaultPath,
+          records: pasted.map((a) => ({
+            file: rel(a),
+            ts: Date.now(),
+            domain: domain ?? null,
+            thread: activeThreadRef.current,
+            session: sessionRef.current,
+            surface: isApp ? "app-chat" : "chat",
+            message: visible.slice(0, 140),
+          })),
+        }).catch(() => {});
+        void invoke("engine_attachments_caption").catch(() => {});
+      }
+    }
     // Announce the stream so the sidebar can pulse the originating
     // domain even if the user navigates away while it runs.
     onStreamStart({
