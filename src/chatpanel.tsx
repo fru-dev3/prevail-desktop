@@ -82,6 +82,7 @@ export function ChatPanel({
   threadDomain,
   isApp,
   appId,
+  appAccount,
   vaultPath,
   clis,
   fwLens,
@@ -112,6 +113,10 @@ export function ChatPanel({
   // app's own SKILL.md and auto-attach it as context so the model knows how to
   // use that app. Null for a plain domain conversation.
   appId?: string | null;
+  // The open app's account BINDING (manifest.account.label) - which identity of
+  // a multi-account connector this app instance IS. Carried into the turn so an
+  // app chat authenticates as its bound identity without a chip pick.
+  appAccount?: string | null;
   vaultPath: string;
   clis: CliInfo[];
   fwLens: ReturnType<typeof useFrameworkLens>;
@@ -359,6 +364,13 @@ export function ChatPanel({
   const [contextOpen, setContextOpen] = useState<boolean>(() => lsGet("prevail.contextOpen") === "1");
   useEffect(() => { lsSet("prevail.contextOpen", contextOpen ? "1" : "0"); }, [contextOpen]);
   const [primedContext, setPrimedContext] = useState<{ label: string; body: string }[]>([]);
+  // Identity bindings of ATTACHED apps, keyed by their primedContext label
+  // ("app: Gmail Personal" -> { id, account }). An app instance bound to an
+  // account (manifest.account) carries that identity into the turn - the
+  // generic "an app = a connector + an identity" contract. Entries whose label
+  // is no longer in primedContext are simply ignored at send time, so removing
+  // the chip detaches the identity too.
+  const attachedBindingsRef = useRef<Record<string, { id: string; account: string }>>({});
   // B2: surface attach failures on-screen instead of swallowing them, so a
   // silent "$domain didn't attach" becomes a visible, diagnosable message.
   const [attachErr, setAttachErr] = useState<string | null>(null);
@@ -935,6 +947,16 @@ export function ChatPanel({
     if ((appId ?? "").toLowerCase().includes("google")) return true;
     return primedContext.some((c) => /(^|\b)(auto-)?app:\s*google/i.test(c.label));
   }, [primedContext, appId]);
+  // The Google identity RESOLVED BY BINDING: the open app's own account binding
+  // (app chat) or the binding of an attached Google app (domain chat). A bound
+  // app instance IS one identity, so no per-chat pick is needed; an explicit
+  // chip pick still overrides at send. Recomputed when attachments change.
+  const boundGoogleAccount = useMemo(() => {
+    if (isApp) return appAccount ?? null;
+    return primedContext
+      .map((c) => attachedBindingsRef.current[c.label])
+      .find((b) => b && /google|gmail/i.test(b.id))?.account ?? null;
+  }, [isApp, appAccount, primedContext]);
   // The connected Google accounts on this machine, loaded once the Google app is
   // in this chat's context. Used at send() to INHERIT the app's authenticated
   // account when the user hasn't explicitly picked one in Modes, so a domain chat
@@ -1822,13 +1844,15 @@ export function ChatPanel({
       if (Array.isArray(parsed)) pickedGoogleAccounts = parsed.filter((s) => typeof s === "string" && s.trim());
     } catch { /* no valid selection, act on the default account */ }
     // If the Google app is ATTACHED to this chat but the user hasn't explicitly
-    // picked an account in Modes, INHERIT the app's authenticated account so the
-    // domain chat authenticates as the app's own chat would. Leaving it null let
-    // gws fall back to its arbitrary on-disk default (often an unauthorized
-    // account), which is the "Gmail scope not granted" bug. Explicit picks still
-    // win. The CLI applies the same connected-account default at spawn, so this
-    // is belt-and-braces AND makes the chosen account visible to the run.
-    const googleAccountArg = inheritedGoogleAccount(pickedGoogleAccounts, googleConnectedAccounts, googleInContext);
+    // picked an account in Modes, INHERIT the app's authenticated identity so
+    // the chat authenticates as the app's own chat would. Precedence: explicit
+    // chip pick > the attached app instance's own account binding
+    // (manifest.account - attaching a bound app IS choosing that identity) >
+    // the single connected account > unset (the engine refuses ambiguity).
+    // The binding comes from the open app itself (app chat) or from whichever
+    // attached Google app in this conversation carries one (domain chat) - see
+    // boundGoogleAccount above.
+    const googleAccountArg = inheritedGoogleAccount(pickedGoogleAccounts, googleConnectedAccounts, googleInContext, boundGoogleAccount);
     if (chatCli && ENGINE_ONLY.has(chatCli) && !useEngine) {
       const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "oMLX";
       setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which isn't available right now. Make sure the Prevail engine is installed, then try again.`, ts: Date.now(), cli: chatCli, model: chatModel ?? undefined }]);
@@ -2019,6 +2043,12 @@ export function ChatPanel({
           ? `\n\nSaved local data (read from your vault, not a live browse):\n${chunks.join("\n\n")}`
           : `\n\nNo local data is saved for this app yet. I read what its sync has captured into your vault - I do not browse the app live - so connect or sync it to pull data in.`;
       } catch { /* data read is best-effort; the identity card still attaches */ }
+      // Record the app's identity binding under its context label so the send
+      // path can carry it into the turn (any connector type; consumed today by
+      // the google_workspace account routing, visible in the card for all).
+      if (app.account?.label) {
+        attachedBindingsRef.current[`app: ${app.title}`] = { id: app.id, account: app.account.label };
+      }
       injectContext(head + dataBlock, `app: ${app.title}`);
     } catch (err) { console.error("attach app", err); setAttachErr(`Couldn't attach app: ${err}`); }
   }, [injectContext, vaultPath]);
@@ -3189,7 +3219,7 @@ export function ChatPanel({
                 </div>
               )}
             </div>
-            <DomainStatusBar domain={domain} fwLens={fwLens} googleInContext={googleInContext} />
+            <DomainStatusBar domain={domain} fwLens={fwLens} googleInContext={googleInContext} googleBound={boundGoogleAccount} />
             {/* X7: plan-mode toggle - ask for a plan before acting. */}
             <button
               onClick={() => setPlanMode((v) => !v)}

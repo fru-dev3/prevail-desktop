@@ -1350,6 +1350,25 @@ pub fn engine_app_set_model(id: String, model: String) -> Result<serde_json::Val
     run_engine_json(&["connectors", "set", &id, "model", &model, "--json"])
 }
 
+/// Bind (or clear) an app's account identity - WHICH account of a multi-account
+/// connector this app instance is (e.g. which Google account). Attaching the app
+/// to a chat carries this identity into the turn. Empty label clears the
+/// binding. Returns { ok, path?, account?, error? }.
+#[tauri::command]
+pub fn engine_app_set_account(
+    id: String,
+    label: String,
+    address: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mut args: Vec<&str> = vec!["connectors", "set", &id, "account", &label];
+    let addr = address.unwrap_or_default();
+    if !addr.trim().is_empty() {
+        args.push(&addr);
+    }
+    args.push("--json");
+    run_engine_json(&args)
+}
+
 /// APP-4: set (or clear) an app's autonomous-sync schedule. `every` is the
 /// cadence the engine validates (hourly | <2-23>h | daily | weekly), with an
 /// optional HH:MM `at` and weekday `on`; "off"/"none"/"" clears the schedule.

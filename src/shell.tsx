@@ -80,6 +80,16 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
     try { await invoke("engine_app_set_model", { id: app.id, model: m }); onChanged(); }
     catch (e) { setNote(`model: ${e}`); }
   }, [app.id, onChanged]);
+  // Account identity binding: WHICH account of a multi-account connector this
+  // app instance is (e.g. which Google profile). Attaching the app to a chat
+  // carries this identity into the turn. Empty = unbound (single-account
+  // connectors never need it).
+  const [accountDraft, setAccountDraft] = useState(app.account?.label ?? "");
+  useEffect(() => { setAccountDraft(app.account?.label ?? ""); }, [app.id, app.account?.label]);
+  const saveAccount = useCallback(async (label: string) => {
+    try { await invoke("engine_app_set_account", { id: app.id, label, address: null }); onChanged(); }
+    catch (e) { setNote(`account: ${e}`); }
+  }, [app.id, onChanged]);
   useEffect(() => {
     setSkills(null);
     invoke<{ id: string; runner: string; trigger: string }[]>("engine_app_skills", { id: app.id, vault: vaultPath }).then(setSkills).catch(() => setSkills([]));
@@ -339,6 +349,22 @@ export function AppFacetPanel({ app, vaultPath, domains, appTab, onOpenDomain, o
               {modelDraft && <button onClick={() => { setModelDraft(""); void saveModel(""); }} className="shrink-0 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">Clear</button>}
             </div>
             <div className="mt-1.5 text-[12px] text-text-muted">Which model runs this app's skills and syncs. Leave empty to use your global default.</div>
+          </AppCard>
+          {/* Identity binding: which account of a multi-account connector this
+              app instance IS. Attaching the app to any chat carries this
+              identity into the turn (no per-chat account pick needed). */}
+          <AppCard icon={KeyRound} label="Account identity">
+            <div className="flex items-center gap-2">
+              <input
+                value={accountDraft}
+                onChange={(e) => setAccountDraft(e.target.value)}
+                onBlur={() => { if ((accountDraft.trim() || "") !== (app.account?.label ?? "")) void saveAccount(accountDraft.trim()); }}
+                placeholder="Unbound (e.g. a connected profile label)"
+                className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+              />
+              {accountDraft && <button onClick={() => { setAccountDraft(""); void saveAccount(""); }} className="shrink-0 rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">Clear</button>}
+            </div>
+            <div className="mt-1.5 text-[12px] text-text-muted">Which account this app instance acts as when its connector has several (use the profile label you connected, e.g. under Google). Chats with this app attached authenticate as this account; a per-chat pick in Modes still overrides.</div>
           </AppCard>
           <AppCard icon={Clock} label="Schedule">
             <div className="text-sm text-text-primary">{appScheduleText(app)}</div>
