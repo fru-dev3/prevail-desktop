@@ -1820,6 +1820,9 @@ export function ChatPanel({
           // Economy / Balanced / Quality bias for the Auto router. Only consulted
           // by the engine when model === "auto"; harmless otherwise.
           routeBias: chatModel === "auto" ? getPref("prevail.route.bias", "balanced") : null,
+          // Layer 4 cascade escalation (opt-in, default off). Only consulted by the
+          // engine when model === "auto"; harmless otherwise.
+          routeCascade: chatModel === "auto" ? getPref("prevail.route.cascade", "0") === "1" : null,
           // Authoritative default account for the google_workspace connector.
           googleAccount: googleAccountArg,
         });

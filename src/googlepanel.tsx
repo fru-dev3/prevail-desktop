@@ -20,7 +20,7 @@ import type { LucideIcon } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke, listen } from "./bridge";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
-import { PREF, getPref } from "./storage";
+import { PREF, getPref, setDomainToggle } from "./storage";
 import { AppRowLogo } from "./panels3";
 import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
 import type { BrandLogo, ChatEvent } from "./types";
@@ -48,6 +48,34 @@ const CONSEQUENTIAL_GOAL_RE =
   /\b(send|reply|replies|respond|forward|archive|delete|trash|remove|label|star|mark|move|draft|compose|schedule|create|invite|rsvp|accept|decline|share|unsubscribe|snooze)\b/i;
 export function goalNeedsConnector(goal: string): boolean {
   return CONSEQUENTIAL_GOAL_RE.test(goal || "");
+}
+
+// The hand-off from a consequential Gmail goal to the Google connector, run in
+// Act mode. The read-only browser-learn can't send/archive/delete; the
+// google_workspace connector can (queued for the user's approval under the
+// autonomy brake). This builds the plan for that one-click hand-off:
+//   - actDomain: the domain whose Act toggle we flip ON. The Google app chat
+//     grounds in the engine "general" domain; we open it BOUND to a non-empty
+//     domain ("general") so the composer's Act-mode guard (`!!domain` in
+//     chatpanel) passes and the turn actually routes through the agent runtime.
+//     "general" is a distinct toggle bucket from General (""), so this never
+//     silently arms Act mode on the plain General chat.
+//   - seed: the goal text, prefilled into the composer so the user just hits Send.
+//   - app: the Google app to open in chat (same shape the header chat button uses).
+// Pure + exported so the button is verifiable without a DOM and the wiring lives
+// in one place.
+export const CONNECTOR_TURN_DOMAIN = "general";
+export type ConnectorTurn = {
+  actDomain: string;
+  seed: string;
+  app: { id: string; title: string; domains: string[] };
+};
+export function buildConnectorTurn(goal: string): ConnectorTurn {
+  return {
+    actDomain: CONNECTOR_TURN_DOMAIN,
+    seed: (goal || "").trim(),
+    app: { id: GOOGLE_APP_ID, title: "Google Workspace", domains: [CONNECTOR_TURN_DOMAIN] },
+  };
 }
 
 // A runnable skill as the UI displays it (same contract the engine returns for
@@ -186,6 +214,21 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
   const isFav = favs.has(favKey);
   const openGoogleChat = useCallback(() => {
     window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: { id: GOOGLE_APP_ID, title: "Google Workspace", domains: [] } }));
+  }, []);
+  // One-click "do this with the connector": arm Act mode for the Google app
+  // chat, open it, and prefill the composer with the goal so the user just hits
+  // Send. The send then routes through the agent runtime and the
+  // google_workspace connector performs the action (queued for approval) rather
+  // than the read-only browser refusing it. Seed is persisted so it survives the
+  // chat panel mounting fresh, and also dispatched live for the already-open case
+  // (mirrors the Spark "Explore in chat" hand-off).
+  const useConnector = useCallback((goal: string) => {
+    const turn = buildConnectorTurn(goal);
+    if (!turn.seed) return;
+    setDomainToggle(turn.actDomain, "act", true);
+    try { localStorage.setItem("prevail.compose.pending", turn.seed); } catch { /* ignore */ }
+    window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: turn.app }));
+    window.dispatchEvent(new CustomEvent("prevail:compose-seed", { detail: turn.seed }));
   }, []);
 
   // One-click setup streaming state.
@@ -662,12 +705,14 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
                   // The goal asks for a send/archive/delete style action. The
                   // browser here is read-only and would refuse it; the Google
                   // connector can do it (queued for your approval). Route there.
-                  <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
+                  <div className="space-y-2.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
                     <div className="text-[12px] font-semibold text-text-primary">Gmail has a connector that can do this</div>
                     <div className="text-[11px] leading-snug text-text-muted">
-                      Learning a browser only teaches Prevail to READ pages, so it can't send, reply, archive, or delete. Google is connected through a tool that can, sending and changes wait for your OK under Needs you. Ask in chat instead, for example: "{goalText.trim()}".
+                      Learning a browser only teaches Prevail to READ pages, so it can't send, reply, archive, or delete. Google is connected through a tool that can, and sending or changes wait for your OK under Needs you. One click hands this to the connector in chat, with Act mode on, so you just review and send.
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button onClick={() => { const g = goalText.trim(); setConnectorHint(false); setComposing(false); setGoalText(""); useConnector(g); }}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent px-3 py-1.5 text-xs font-semibold text-background shadow-sm hover:bg-accent-hover"><Zap className="h-3.5 w-3.5" /> Do this with the Gmail connector</button>
                       <button onClick={() => { setConnectorHint(false); setComposing(false); setLearnMode("learn"); }}
                         className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary">Teach a read-only flow anyway</button>
                       <button onClick={() => { setConnectorHint(false); setComposing(false); }}
