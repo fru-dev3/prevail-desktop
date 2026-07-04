@@ -283,6 +283,15 @@ export interface ChatMessage {
   // (from the runtime's structured output), so the user sees what actually ran,
   // e.g. "→ calling AllTrails" / "✓ used create_skill". Agent/Act runs only.
   toolLog?: string[];
+  // Live execution steps for the checklist shown while a turn runs: each REAL
+  // tool call with a human label + status (Reading Gmail, Creating a Google Doc,
+  // Saving to Drive), streamed from the engine. Populated on BOTH app and domain
+  // chats (they share the turn path). `startedAt`/`endedAt` power the elapsed
+  // time + heartbeat so a long step reads "still working (18s)" not a dead spinner.
+  steps?: ChatStep[];
+  // An upfront plan the model declared for a multi-step job, rendered as a header
+  // above the live checklist. Absent for simple one-shot replies.
+  plan?: string[];
   // Token / cost accounting from the engine's `usage` ChatEvent, when the
   // reply came through the unified engine chat path (Track D5). Null on
   // replies that came through the native chat_send path.
@@ -314,11 +323,26 @@ export interface ChatEvent {
   role?: "user" | "assistant" | "system" | "tool";
   text?: string;
   tool?: { name?: string; input?: unknown; output?: unknown };
+  // Structured live step (a real tool call), streamed on `type: "tool"` so the UI
+  // can render a checklist of what the model is doing. Matched by `id`.
+  step?: { id: string; label: string; status: "running" | "done" | "failed" };
+  // The model's declared plan (from TodoWrite), rendered as a header above the
+  // checklist. Also arrives on `type: "tool"` events.
+  plan?: string[];
   usage?: { input_tokens?: number; output_tokens?: number; cost_usd?: number };
   engine?: string;
   error?: string;
   // Present only on the `route` event (auto model routing): the chosen model + why.
   route?: RouteInfo;
+}
+
+// One step in the live execution checklist shown while a chat turn runs.
+export interface ChatStep {
+  id: string;
+  label: string;
+  status: "running" | "done" | "failed";
+  startedAt: number;
+  endedAt?: number;
 }
 
 export interface SurfaceResult { questions: string[]; actions: string[]; generated_at: number; stale: boolean }
