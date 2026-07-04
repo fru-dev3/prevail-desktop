@@ -13,7 +13,7 @@ import { MODELS, isHarnessRuntime } from "./constants";
 import { relTime, scoreColor, titleCase } from "./format";
 import { startProcess, endProcess } from "./processes";
 import { ContextMeter, contextWindowFor, estimateTokens } from "./contextmeter";
-import { domainBlurb, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
+import { domainBlurb, inheritedGoogleAccount, isLocalCli, looksLikeJudgmentCall, preferredLocalCli, stripAnsi } from "./helpers";
 import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, buildSkillsPreamble, curatedFor, loadPreferredSkills, maybeRedact, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
@@ -935,6 +935,27 @@ export function ChatPanel({
     if ((appId ?? "").toLowerCase().includes("google")) return true;
     return primedContext.some((c) => /(^|\b)(auto-)?app:\s*google/i.test(c.label));
   }, [primedContext, appId]);
+  // The connected Google accounts on this machine, loaded once the Google app is
+  // in this chat's context. Used at send() to INHERIT the app's authenticated
+  // account when the user hasn't explicitly picked one in Modes, so a domain chat
+  // authenticates as the app's own chat would (see inheritedGoogleAccount). We
+  // cache it here (loaded only when Google is attached) so the profile probe
+  // never runs on the hot send path for a non-Google chat.
+  const [googleConnectedAccounts, setGoogleConnectedAccounts] = useState<string[]>([]);
+  useEffect(() => {
+    if (!googleInContext) { setGoogleConnectedAccounts([]); return; }
+    let alive = true;
+    invoke<Array<{ label?: string; status?: string }>>("google_profiles")
+      .then((ps) => {
+        if (!alive) return;
+        const connected = (ps ?? [])
+          .filter((p) => p && p.status === "connected" && !!p.label)
+          .map((p) => String(p.label));
+        setGoogleConnectedAccounts(connected);
+      })
+      .catch(() => { if (alive) setGoogleConnectedAccounts([]); });
+    return () => { alive = false; };
+  }, [googleInContext]);
   const conversationTokens = useMemo(() => messages.reduce((a, mm) => a + estimateTokens(mm.content), 0), [messages]);
   const attachedTokens = useMemo(
     () =>
@@ -1772,7 +1793,14 @@ export function ChatPanel({
       const parsed = JSON.parse(getPref(`prevail.domain.${domain}.googleAccounts`, "[]")) as string[];
       if (Array.isArray(parsed)) pickedGoogleAccounts = parsed.filter((s) => typeof s === "string" && s.trim());
     } catch { /* no valid selection, act on the default account */ }
-    const googleAccountArg = pickedGoogleAccounts.length > 0 ? pickedGoogleAccounts.join(",") : null;
+    // If the Google app is ATTACHED to this chat but the user hasn't explicitly
+    // picked an account in Modes, INHERIT the app's authenticated account so the
+    // domain chat authenticates as the app's own chat would. Leaving it null let
+    // gws fall back to its arbitrary on-disk default (often an unauthorized
+    // account), which is the "Gmail scope not granted" bug. Explicit picks still
+    // win. The CLI applies the same connected-account default at spawn, so this
+    // is belt-and-braces AND makes the chosen account visible to the run.
+    const googleAccountArg = inheritedGoogleAccount(pickedGoogleAccounts, googleConnectedAccounts, googleInContext);
     if (chatCli && ENGINE_ONLY.has(chatCli) && !useEngine) {
       const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "oMLX";
       setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which isn't available right now. Make sure the Prevail engine is installed, then try again.`, ts: Date.now(), cli: chatCli, model: chatModel ?? undefined }]);
