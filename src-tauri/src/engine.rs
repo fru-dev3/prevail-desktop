@@ -1373,6 +1373,31 @@ pub fn engine_skill_archive(domain: String, skill: String, restore: Option<bool>
     run_engine_json(&["skill-usage", action, &domain, &skill, "--json"])
 }
 
+/// Pin (or clear) the AI runtime that serves an app's chats - the routing half
+/// of the harness pass-through lanes. Empty/off clears.
+#[tauri::command]
+pub fn engine_app_set_runtime(id: String, runtime: String) -> Result<serde_json::Value, String> {
+    run_engine_json(&["connectors", "set", &id, "runtime", &runtime, "--json"])
+}
+
+/// The normalized harness-connections inventory (Claude Code / Codex / Gemini
+/// connectors, local + account, with health), optionally matched to one app.
+#[tauri::command]
+pub async fn harness_connections_scan(app: Option<String>) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut args: Vec<String> = vec!["harness-connections".into()];
+        if let Some(a) = app.filter(|s| !s.trim().is_empty()) {
+            args.push("--app".into());
+            args.push(a);
+        }
+        args.push("--json".into());
+        let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        run_engine_json(&refs)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Kick one bounded pass of the attachment captioner (Haiku looks at each new
 /// pasted image once, captions it in the index, and renames it semantically).
 /// Fire-and-forget from the send path - a captioning hiccup never disturbs chat.

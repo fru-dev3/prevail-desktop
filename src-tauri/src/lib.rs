@@ -422,6 +422,8 @@ pub fn run() {
             appcmds::save_pasted_image,
             appcmds::attachments_index_append,
             engine::engine_attachments_caption,
+            engine::engine_app_set_runtime,
+            engine::harness_connections_scan,
             appcmds::spark_archive_append,
             appcmds::spark_archive_read,
             appcmds::app_diagnostics,

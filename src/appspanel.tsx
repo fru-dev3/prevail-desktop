@@ -2888,24 +2888,38 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
   // EVERY runtime that has this app as a connector (Claude Code / Codex / Gemini),
   // with its current auth state — so the Connections page can offer pass-through
   // through each, regardless of transient "needs authentication" status.
-  const [passThroughs, setPassThroughs] = useState<Array<{ runtime: string; connected: boolean }>>([]);
+  const [passThroughs, setPassThroughs] = useState<Array<{ runtime: string; connected: boolean; health?: string }>>([]);
   useEffect(() => {
     let alive = true;
-    void invoke<Array<{ runtime: string; name: string; connected: boolean }>>("discover_runtime_connectors", { runtime: "all" })
-      .then((rows) => {
+    // One source of truth: the engine's harness-connections registry (all three
+    // runtimes' native config formats normalized, WITH live health for claude.ai
+    // connectors). Falls back to the older Rust discovery if the engine call fails.
+    void invoke<{ connections?: Array<{ harness: string; name: string; health?: string }> }>("harness_connections_scan", { app: app.id })
+      .then((res) => {
         if (!alive) return;
-        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-        const want = new Set([norm(app.id), norm(app.title || "")].filter(Boolean));
-        const matches = (rows || []).filter((r) => want.has(norm(r.name)));
-        // Dedupe by runtime, preferring a connected entry.
-        const byRt = new Map<string, { runtime: string; connected: boolean }>();
-        for (const r of matches) {
-          const prev = byRt.get(r.runtime);
-          if (!prev || (r.connected && !prev.connected)) byRt.set(r.runtime, { runtime: r.runtime, connected: r.connected });
+        const byRt = new Map<string, { runtime: string; connected: boolean; health?: string }>();
+        for (const c of res?.connections ?? []) {
+          const prev = byRt.get(c.harness);
+          const connected = c.health !== "degraded";
+          if (!prev || (connected && !prev.connected)) byRt.set(c.harness, { runtime: c.harness, connected, health: c.health });
         }
         setPassThroughs([...byRt.values()]);
       })
-      .catch(() => {});
+      .catch(() => {
+        void invoke<Array<{ runtime: string; name: string; connected: boolean }>>("discover_runtime_connectors", { runtime: "all" })
+          .then((rows) => {
+            if (!alive) return;
+            const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+            const want = new Set([norm(app.id), norm(app.title || "")].filter(Boolean));
+            const byRt = new Map<string, { runtime: string; connected: boolean }>();
+            for (const r of (rows || []).filter((r) => want.has(norm(r.name)))) {
+              const prev = byRt.get(r.runtime);
+              if (!prev || (r.connected && !prev.connected)) byRt.set(r.runtime, { runtime: r.runtime, connected: r.connected });
+            }
+            setPassThroughs([...byRt.values()]);
+          })
+          .catch(() => {});
+      });
     return () => { alive = false; };
   }, [app.id, app.title]);
   const passThrough = passThroughs[0] ?? null; // for the header banner
@@ -3602,19 +3616,26 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
                   link and a Make-default toggle. Shows even when auth is transient. */}
               {passThroughs.map((pt) => {
                 const rt = pt.runtime === "claude" ? "Claude Code" : pt.runtime.charAt(0).toUpperCase() + pt.runtime.slice(1);
-                const isDefault = methodOf(app) === "mcp";
-                const authUrl = pt.runtime === "claude" ? "https://claude.ai/mcp" : pt.runtime === "gemini" ? "https://ai.google.dev" : "https://platform.openai.com";
+                const isDefault = methodOf(app) === "mcp" && (app.runtime ?? "claude") === pt.runtime;
+                const authUrl = pt.runtime === "claude" ? "https://claude.ai/settings/connectors" : pt.runtime === "gemini" ? "https://ai.google.dev" : "https://chatgpt.com/apps";
                 return (
                 <div key={pt.runtime} className="flex items-center gap-3 rounded-xl border border-accent-border bg-accent-soft/30 px-3.5 py-2.5">
                   <span className={`h-2 w-2 shrink-0 rounded-full ${pt.connected ? "bg-ok" : "bg-warn"}`} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">{rt} · MCP {isDefault && <span className="rounded border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-accent">default</span>}</div>
-                    <div className="font-mono text-[10.5px] text-text-muted">{pt.connected ? "already authorized · zero setup" : "set up here, but needs re-authorization"} · Prevail passes it through</div>
+                    <div className="font-mono text-[10.5px] text-text-muted">{pt.health === "degraded" ? "connected but unhealthy (tools fetch failed) - re-authorize" : pt.connected ? "already authorized · zero setup" : "set up here, but needs re-authorization"} · Prevail passes it through</div>
                   </div>
                   {!pt.connected && <button onClick={() => void openUrl(authUrl)} className="shrink-0 rounded-md border border-warn/50 px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-warn hover:bg-warn/10">Re-authorize</button>}
                   <button
-                    onClick={() => setDefaultMethod("mcp")}
-                    title={`Use ${app.title || app.id} through your ${rt} connection`}
+                    onClick={() => {
+                      // Routing half of the lane: this app's chats run on THIS
+                      // runtime, whose account-side connectors only exist inside
+                      // its own sessions (ChatGPT apps ride Codex, claude.ai
+                      // connectors ride Claude Code).
+                      void invoke("engine_app_set_runtime", { id: app.id, runtime: pt.runtime }).then(() => void onReload()).catch(() => {});
+                      setDefaultMethod("mcp");
+                    }}
+                    title={`Use ${app.title || app.id} through your ${rt} connection - its chats will run on ${rt}`}
                     className="shrink-0 rounded-md border border-accent-border bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background hover:opacity-90"
                   >{isDefault ? "In use" : "Use this"}</button>
                 </div>
