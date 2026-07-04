@@ -476,7 +476,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         setSelected(added.id);
       } else {
         setConnecting(false);
-        setCatalogConnectErr(`Couldn't add ${c.name}. If your vault is locked (see the status bar), unlock it first, then connect.`);
+        setCatalogConnectErr(`Added ${c.name}, but it didn't show up in your list. If the status bar shows the vault locked, unlock it and try again. Otherwise, retry, or run Settings, Workspace, Rebuild structure, then reopen Apps.`);
         // Keep catalogPick set so the detail stays on this app rather than going blank.
       }
     } catch (e) {
