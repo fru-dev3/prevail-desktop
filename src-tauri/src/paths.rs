@@ -74,6 +74,24 @@ pub(crate) fn v4_content_path(domain_dir: &Path, v4_rel: &str, legacy: &str) -> 
     }
 }
 
+/// The DIRECTORY home for a logical subdir (e.g. `_log`), honoring the domain's
+/// layout. Unlike `v4_content_path`, this PREFERS whichever of the v4 or legacy
+/// dir already exists on a v4 domain, so a writer never SPLITS content still
+/// sitting at the legacy path (it keeps appending there until the migrator
+/// consolidates it); a clean v4 domain gets the v4 home. A no-op on legacy
+/// domains. Does NOT create the dir - callers mkdir as they already do. Mirrors
+/// the engine's v4DirPath.
+pub(crate) fn v4_dir_path(domain_dir: &Path, v4_rel: &str, legacy: &str) -> PathBuf {
+    if is_v4_domain(domain_dir) {
+        let v4 = domain_dir.join(v4_rel);
+        if v4.exists() { return v4; }
+        let leg = domain_dir.join(legacy);
+        if leg.exists() { return leg; }
+        return v4;
+    }
+    domain_dir.join(legacy)
+}
+
 // B2-12 (Phase 1, additive — no behavior change yet): the `build/` container for
 // supporting/runtime files (ledgers, _meta, _threads, benchmark, usage, …).
 // `runtime_path` PREFERS <vault>/build/<name> when build/ exists, else falls back
@@ -219,18 +237,21 @@ pub(crate) fn safe_domain_subdir(vault: &str, domain: &Option<String>, sub: &str
         // else the vault root), consistent with a named domain.
         None => general_dir(vault),
     };
-    // v4 layout: legacy flat subdirs move under memory/. Remap so every reader
-    // that goes through this chokepoint (threads especially) finds them at their
-    // new home once a domain is migrated. No-op on un-migrated domains.
-    let sub = if is_v4_domain(&base) {
+    // v4 layout: legacy flat subdirs move under memory/ (.system/ for plumbing).
+    // Remap so every writer/reader that goes through this chokepoint finds them at
+    // their new home once a domain is migrated. No-op on un-migrated domains.
+    let path = if is_v4_domain(&base) {
         match sub {
-            "_threads" => "memory/threads",
-            other => other,
+            "_threads" => base.join("memory").join("threads"),
+            // Raw transcript log is plumbing -> .system/log; prefer an existing
+            // _log so a writer never splits its history before consolidation.
+            "_log" => v4_dir_path(&base, ".system/log", "_log"),
+            other => base.join(other),
         }
     } else {
-        sub
+        base.join(sub)
     };
-    Ok(base.join(sub))
+    Ok(path)
 }
 
 // Every directory a domain's markdown thread files may physically live in,
@@ -321,6 +342,38 @@ mod v4_path_tests {
         assert_eq!(p, d.join("memory").join("state.md"));
         assert!(d.join("memory").is_dir());
         let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn v4_dir_path_prefers_existing_then_v4_home() {
+        let d = std::env::temp_dir().join(format!("prevail-v4dir-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        // Legacy domain -> legacy name.
+        assert_eq!(v4_dir_path(&d, ".system/log", "_log"), d.join("_log"));
+        // v4 + nothing yet -> the v4 home (so a clean domain gets .system/log).
+        fs::write(d.join(V4_MARKER), "1").unwrap();
+        assert_eq!(v4_dir_path(&d, ".system/log", "_log"), d.join(".system").join("log"));
+        // v4 + an existing legacy _log/ -> keep appending there (never split).
+        fs::create_dir_all(d.join("_log")).unwrap();
+        assert_eq!(v4_dir_path(&d, ".system/log", "_log"), d.join("_log"));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn save_session_log_subdir_is_v4_aware() {
+        let root = std::env::temp_dir().join(format!("prevail-logsub-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let dir = root.join("data").join("domains").join("career");
+        fs::create_dir_all(&dir).unwrap();
+        let vault = root.to_string_lossy().to_string();
+        let dom = Some("career".to_string());
+        // Legacy domain -> flat _log.
+        assert_eq!(safe_domain_subdir(&vault, &dom, "_log").unwrap(), dir.join("_log"));
+        // Marked clean domain -> .system/log, NOT a root _log.
+        fs::write(dir.join(V4_MARKER), "1").unwrap();
+        assert_eq!(safe_domain_subdir(&vault, &dom, "_log").unwrap(), dir.join(".system").join("log"));
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
