@@ -391,6 +391,46 @@ pub(crate) fn read_text_file(path: String) -> Result<String, String> {
     read_to_string_retry(&path).map_err(|e| format!("read {path}: {e}"))
 }
 
+/// Save an image pasted into a composer to the vault's attachments dir and
+/// return its absolute path. The path is then attached to the turn like any
+/// file attachment; the model reads it with its (multimodal) file tools. Only
+/// well-known raster extensions are accepted and the decoded payload is capped
+/// so a runaway clipboard can't fill the disk.
+#[tauri::command]
+pub(crate) fn save_pasted_image(
+    vault: String,
+    data_base64: String,
+    ext: String,
+) -> Result<String, String> {
+    use base64::Engine as _;
+    const MAX_BYTES: usize = 15 * 1024 * 1024; // 15MB decoded
+    let ext = ext.to_ascii_lowercase();
+    if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp") {
+        return Err(format!("unsupported image type: {ext}"));
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|e| format!("decode image: {e}"))?;
+    if bytes.is_empty() {
+        return Err("empty image".into());
+    }
+    if bytes.len() > MAX_BYTES {
+        return Err(format!(
+            "image too large ({} MB, max 15 MB)",
+            bytes.len() / (1024 * 1024)
+        ));
+    }
+    let dir = Path::new(&vault).join("build").join("_meta").join("attachments");
+    fs::create_dir_all(&dir).map_err(|e| format!("create attachments dir: {e}"))?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let file = dir.join(format!("pasted-{stamp}.{ext}"));
+    fs::write(&file, &bytes).map_err(|e| format!("write image: {e}"))?;
+    Ok(file.to_string_lossy().to_string())
+}
+
 // Diagnostics for the About → Run Diagnosis / Debug Dump panel. Gathers the
 // app + engine versions, key paths, and OS so support issues are one copy away.
 #[tauri::command]
