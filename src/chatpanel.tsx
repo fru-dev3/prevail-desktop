@@ -30,6 +30,7 @@ import { AgentPickerRail, ContextCanvas, DomainContextDrawer, DomainPrefsPanel }
 import { HomeBriefing } from "./recommendationspanel";
 import type { BrandLogo, ChatEvent, ChatMessage, CliInfo, ContextScore, Domain, DomainContextBundle, DomainTab, EngineApp, LifeReadiness, SkillEntry, ThreadMeta, ThreadTurn } from "./types";
 import type { UnlistenFn } from "./bridge";
+import { savePastedImages } from "./paste";
 
 // Per-domain cache of the cheap (no-audit) context score. engine_score spawns the
 // engine binary; users switch domains often, so re-opening a domain within the TTL
@@ -2943,25 +2944,15 @@ export function ChatPanel({
             onPaste={async (e) => {
               // F3: a pasted image is saved to the vault and attached, so
               // screenshots can go into chat (vision-capable runtimes read the
-              // file). Handled before the long-text path.
-              const imageItem = Array.from(e.clipboardData.items).find((it) => it.type.startsWith("image/"));
-              if (imageItem) {
-                const file = imageItem.getAsFile();
-                if (file) {
-                  e.preventDefault();
-                  try {
-                    const buf = new Uint8Array(await file.arrayBuffer());
-                    let bin = "";
-                    for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
-                    const b64 = btoa(bin);
-                    const ext = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
-                    const path = await invoke<string>("write_paste_image", { vault: vaultPath, base64: b64, ext });
-                    setAttachments((cur) => (cur.includes(path) ? cur : [...cur, path]));
-                    toast.success("Image attached.");
-                  } catch (err) { console.error("write_paste_image", err); toast.error(`Could not attach the image: ${String(err)}`); }
-                  return;
-                }
+              // file). Normalizes macOS's image/tiff clipboard flavor to PNG -
+              // the old path rejected tiff, which made pasting look unsupported.
+              const { paths, errors } = await savePastedImages(e, vaultPath);
+              if (paths.length) {
+                setAttachments((cur) => [...cur, ...paths.filter((p) => !cur.includes(p))]);
+                toast.success(paths.length === 1 ? "Image attached." : `${paths.length} images attached.`);
               }
+              for (const err of errors) { console.error("paste image", err); toast.error(`Could not attach the image: ${err}`); }
+              if (paths.length || errors.length) return;
               if (lsGet("prevail.pref.autoConvertLongPaste") !== "1") return;
               const txt = e.clipboardData.getData("text/plain");
               if (txt.length < 5000) return;
