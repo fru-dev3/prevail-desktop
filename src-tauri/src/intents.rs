@@ -26,9 +26,36 @@ pub(crate) fn intent_append(
     let dir = domain_dir(&vault, &domain);
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir intents: {e}"))?;
     let file = crate::paths::v4_content_path(&dir, ".system/journal.jsonl", "_intents.jsonl");
+    // Provenance: stamp WHERE this prompt came from (machine, app, version,
+    // surface) server-side so every entry carries it without each caller
+    // remembering to. Caller-provided values win; only missing fields are
+    // filled. This is what lets the journal answer "which machine / which
+    // surface is my activity coming from".
+    let mut record = record;
+    if let Some(obj) = record.as_object_mut() {
+        obj.entry("host").or_insert_with(|| serde_json::json!(machine_hostname()));
+        obj.entry("app").or_insert_with(|| serde_json::json!("prevail-desktop"));
+        obj.entry("app_version").or_insert_with(|| serde_json::json!(env!("CARGO_PKG_VERSION")));
+        obj.entry("surface").or_insert_with(|| serde_json::json!("chat"));
+    }
     let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
     engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write intent: {e}"))?;
     Ok(())
+}
+
+/// This machine's hostname, resolved once. Used to stamp provenance on journal
+/// entries so multi-machine vaults can attribute activity (mini vs MBP vs Air).
+pub(crate) fn machine_hostname() -> String {
+    static HOST: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    HOST.get_or_init(|| {
+        std::process::Command::new("hostname")
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "unknown-host".to_string())
+    })
+    .clone()
 }
 
 /// I6: read back the intents ledger so the desktop can surface it (newest
@@ -347,6 +374,9 @@ fn read_capture_prompts(vault: &str, limit: Option<usize>) -> Vec<serde_json::Va
                 "surface": tool,
                 "ts": ts,
                 "source": v.get("source").and_then(|s| s.as_str()).unwrap_or("sync"),
+                // Which machine captured it (the capture layer stamps its own
+                // hostname per record; older records simply lack it).
+                "host": v.get("host").and_then(|h| h.as_str()).unwrap_or(""),
             });
             // Keep the newest occurrence of each identical prompt.
             match by_prompt.get(prompt) {
@@ -406,12 +436,18 @@ pub(crate) async fn distill_intents_core(
         let m: String = msg.chars().take(400).collect();
         // `[domain via surface]` when they differ (native ledger), else `[surface]`
         // (captured cross-tool prompts, where domain == tool == surface). Gives
-        // the model both the life-domain hint and the provenance tag.
-        let tag = if dom == surface {
+        // the model both the life-domain hint and the provenance tag. The
+        // machine (host) rides along when known, so the distiller can also see
+        // WHERE activity happens (hub vs laptop) and weigh it.
+        let host = v.get("host").and_then(|h| h.as_str()).unwrap_or("");
+        let mut tag = if dom == surface {
             surface.to_string()
         } else {
             format!("{dom} via {surface}")
         };
+        if !host.is_empty() {
+            tag = format!("{tag} @ {host}");
+        }
         activity.push_str(&format!("[{tag}] {}\n", m.replace('\n', " ")));
     }
     if activity.trim().is_empty() {
