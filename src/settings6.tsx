@@ -2,7 +2,7 @@
 // Council defaults, Configuration (groups the memory/tasks/ideal sub-sections),
 // and the Agents catalog (AgentCard + AgentsSection).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, FileX, FolderCheck, FolderX, Globe, ListChecks, Loader2, Lock, LockOpen, Scale, Search, Server, ShieldCheck, ShieldOff, Sigma, Target, Terminal, User, Wifi, WifiOff, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, FileX, FolderCheck, FolderX, Globe, ListChecks, Loader2, Lock, LockOpen, Scale, Search, Server, ShieldCheck, ShieldOff, Sigma, Sparkles, Target, Terminal, User, Wifi, WifiOff, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { DISCOVERED_MODELS, RUNTIME_META, VENDOR_BRAND, isHarnessRuntime } from "./constants";
@@ -739,6 +739,61 @@ export function CouncilSettingsSection({ clis }: { clis: CliInfo[] }) {
 // rendered directly inside Settings → Integrations. Old ToolsPanel
 // wrapper removed.
 
+// Economy - Balanced - Quality bias for the "Auto" model router. Persisted
+// globally at prevail.route.bias (default "balanced") and forwarded to the
+// engine only on auto turns. Shown inside a runtime's model list when that
+// runtime offers an "Auto" model, so the control sits next to what it governs.
+export const ROUTE_BIAS_KEY = "prevail.route.bias";
+type RouteBiasValue = "economy" | "balanced" | "quality";
+function RouteBiasControl() {
+  const read = (): RouteBiasValue => {
+    const v = lsGet(ROUTE_BIAS_KEY, "balanced");
+    return v === "economy" || v === "quality" ? v : "balanced";
+  };
+  const [bias, setBias] = useState<RouteBiasValue>(read);
+  // Stay in sync if another runtime card (or window) changed it.
+  useEffect(() => {
+    const h = () => setBias(read());
+    window.addEventListener("prevail:route-bias-changed", h);
+    return () => window.removeEventListener("prevail:route-bias-changed", h);
+  }, []);
+  const pick = (v: RouteBiasValue) => {
+    setBias(v);
+    lsSet(ROUTE_BIAS_KEY, v);
+    window.dispatchEvent(new Event("prevail:route-bias-changed"));
+  };
+  const opts: { id: RouteBiasValue; label: string; blurb: string }[] = [
+    { id: "economy", label: "Economy", blurb: "cheaper + faster" },
+    { id: "balanced", label: "Balanced", blurb: "cost vs quality" },
+    { id: "quality", label: "Quality", blurb: "strongest model" },
+  ];
+  return (
+    <div className="mb-2.5 rounded-md border border-accent-border/50 bg-accent-soft/40 px-3 py-2">
+      <div className="mb-1.5 flex items-center gap-2">
+        <Sparkles className="h-3 w-3 text-accent" />
+        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-text-primary">Auto routing bias</span>
+      </div>
+      <div className="flex gap-1">
+        {opts.map((o) => (
+          <button
+            key={o.id}
+            onClick={() => pick(o.id)}
+            title={o.blurb}
+            className={`flex-1 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
+              bias === o.id
+                ? "border-accent-border bg-accent text-background"
+                : "border-border bg-background text-text-muted hover:border-accent-border hover:text-accent"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-1 font-mono text-[9px] text-text-muted">{opts.find((o) => o.id === bias)?.blurb}</div>
+    </div>
+  );
+}
+
 export function AgentCard({
   cli,
   onStartChat,
@@ -771,6 +826,9 @@ export function AgentCard({
     return () => window.removeEventListener("prevail:models-refreshed", h);
   }, []);
   const models = modelsFor(cli.id);
+  // "auto" is a router sentinel, not a real model: it can't be verified and must
+  // not count against the "N/M verified" tally or trigger a verify call.
+  const verifiable = models.filter((m) => m.id !== "auto");
   const [open, setOpen] = useState(false);
   const isOpen = forceOpen || open;
   // The provider's default model (what a new chat uses). Set right here in
@@ -792,6 +850,7 @@ export function AgentCard({
   const [cmdCopied, setCmdCopied] = useState(false);
 
   async function verifyModel(modelId: string) {
+    if (modelId === "auto") return; // sentinel, nothing to verify
     setStatus((s) => ({ ...s, [modelId]: "verifying" }));
     try {
       await invoke<string>("verify_cli_model", {
@@ -817,7 +876,7 @@ export function AgentCard({
   }
 
   function verifyAll() {
-    for (const m of models) {
+    for (const m of verifiable) {
       if (status[m.id] === "ok" || status[m.id] === "verifying") continue;
       void verifyModel(m.id);
     }
@@ -827,7 +886,7 @@ export function AgentCard({
   // and there are unverified models in the list.
   useEffect(() => {
     if (!isOpen) return;
-    const unverified = models.some((m) => status[m.id] !== "ok");
+    const unverified = verifiable.some((m) => status[m.id] !== "ok");
     if (unverified) verifyAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -887,8 +946,8 @@ export function AgentCard({
               </span>
             );
           })()}
-          {cli.available && models.length > 0 && (
-            <span className="font-mono text-[10px] text-text-muted">{models.filter((m) => status[m.id] === "ok").length}/{models.length} verified</span>
+          {cli.available && verifiable.length > 0 && (
+            <span className="font-mono text-[10px] text-text-muted">{verifiable.filter((m) => status[m.id] === "ok").length}/{verifiable.length} verified</span>
           )}
         </div>
         {/* Cost column (cumulative spend on this runtime). */}
@@ -966,6 +1025,8 @@ export function AgentCard({
               re-verify all
             </button>
           </div>
+          {/* Auto-routing bias, shown only for runtimes that offer an "Auto" model. */}
+          {models.some((m) => m.id === "auto") && <RouteBiasControl />}
           <div className="flex flex-col gap-1.5">
             {models.map((m) => {
               const s = status[m.id];
@@ -973,7 +1034,7 @@ export function AgentCard({
               return (
                 <div key={m.id} className={`flex items-start gap-3 rounded-md border px-3 py-2 ${defaultModel === m.id ? "border-accent-border bg-accent-soft" : "border-border-subtle bg-background"}`}>
                   <div className="mt-0.5 w-3 shrink-0 text-center text-[12px] leading-none">
-                    <StatusGlyph s={s} />
+                    {m.id === "auto" ? <span className="text-accent" title="Router (picks a model per prompt)">✦</span> : <StatusGlyph s={s} />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-x-2">
@@ -1013,13 +1074,15 @@ export function AgentCard({
                     >
                       runs
                     </button>
-                    <button
-                      onClick={() => verifyModel(m.id)}
-                      disabled={s === "verifying"}
-                      className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40"
-                    >
-                      {s === "verifying" ? "testing…" : s === "ok" ? "re-test" : "test"}
-                    </button>
+                    {m.id !== "auto" && (
+                      <button
+                        onClick={() => verifyModel(m.id)}
+                        disabled={s === "verifying"}
+                        className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent disabled:opacity-40"
+                      >
+                        {s === "verifying" ? "testing…" : s === "ok" ? "re-test" : "test"}
+                      </button>
+                    )}
                     {defaultModel === m.id ? (
                       <span className="rounded-md border border-accent-border bg-accent-soft px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-accent">default</span>
                     ) : (
