@@ -1960,6 +1960,10 @@ export function ChatPanel({
           routeCascade: chatModel === "auto" ? getPref("prevail.route.cascade", "0") === "1" : null,
           // Authoritative default account for the google_workspace connector.
           googleAccount: googleAccountArg,
+          // App chats also see the user's own Claude Code MCP connectors - the
+          // "connected via Claude Code" passthrough those apps advertise
+          // (PayPal etc.). Domain chats keep the strict engine-managed surface.
+          inheritUserMcp: isApp,
         });
       } else {
         await invoke("chat_send", {
