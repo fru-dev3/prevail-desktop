@@ -2928,6 +2928,39 @@ pub async fn engine_chat(
     run_engine_stream_stdin(app, session, args, message, "engine-chat", extra_env).await
 }
 
+/// Record one Auto-routing override to the LOCAL learned-router store
+/// (`<vault>/build/_meta/route-learning.jsonl`) via the engine's
+/// `route-learn record` subcommand. This is how the routing chip's one-click
+/// override teaches Auto to personalize per bucket (domain + difficulty band).
+///
+/// Best-effort and fire-and-forget: a failed log must never disrupt the chat, so
+/// any spawn/engine error is swallowed to `Ok(())`. `--vault` goes BEFORE the
+/// subcommand, matching every other engine command here.
+#[tauri::command]
+pub fn route_learn_record(
+    vault: String,
+    domain: String,
+    band: String,
+    #[allow(non_snake_case)] fromModel: String,
+    #[allow(non_snake_case)] toModel: String,
+) -> Result<(), String> {
+    // Nothing to learn without a vault + a chosen model.
+    if vault.trim().is_empty() || toModel.trim().is_empty() {
+        return Ok(());
+    }
+    let args: Vec<&str> = vec![
+        "--vault", vault.as_str(),
+        "route-learn", "record",
+        "--domain", domain.as_str(),
+        "--band", band.as_str(),
+        "--from", fromModel.as_str(),
+        "--to", toModel.as_str(),
+    ];
+    // Swallow errors — observability of a preference must not break the turn.
+    let _ = run_engine_raw(&args);
+    Ok(())
+}
+
 /// `prevail --vault <vault> agent-run --domain <domain> --goal <goal>
 ///  [--cli X] [--model Y] [--task id] [--autonomy safe|auto] --json`.
 ///

@@ -287,6 +287,27 @@ export function ChatPanel({
     } catch { /* ignore */ }
     return () => window.removeEventListener("prevail:compose-seed", onSeed as EventListener);
   }, []);
+  // Learned router (v1): when the user overrides Auto's pick via a routing chip,
+  // persist the signal to the LOCAL vault store so Auto personalizes this bucket
+  // (domain + difficulty band) over time. This surface has the domain + vault the
+  // chip lacks. Best-effort: a failed log must never break the chat.
+  useEffect(() => {
+    const onOverride = (e: Event) => {
+      const d = (e as CustomEvent).detail as { band?: string; fromModel?: string; toModel?: string } | undefined;
+      if (!d || !d.toModel || !vaultPath) return;
+      // Match the engine's normalization: an empty domain is the General bucket.
+      const engineDomain = domain || "general";
+      invoke("route_learn_record", {
+        vault: vaultPath,
+        domain: engineDomain,
+        band: d.band ?? "moderate",
+        fromModel: d.fromModel ?? "",
+        toModel: d.toModel,
+      }).catch(() => { /* best-effort: learning never breaks chat */ });
+    };
+    window.addEventListener("prevail:route-override", onOverride as EventListener);
+    return () => window.removeEventListener("prevail:route-override", onOverride as EventListener);
+  }, [domain, vaultPath]);
   // Incognito now toggles from the Modes menu; keep this panel's state + glow in sync.
   useEffect(() => {
     const sync = () => setIncognito(incognitoActive("chat"));

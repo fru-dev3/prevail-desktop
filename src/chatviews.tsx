@@ -19,8 +19,20 @@ import type { ChatMessage, DomainContextBundle, DomainToggle, RouteInfo } from "
 
 export const MESSAGE_WINDOW = 80;
 
+// Coarse difficulty band for the learned-router bucket. Mirrors the engine's
+// light/moderate/hard split (see route-learning.ts) so the desktop and the CLI
+// agree on the bucket a preference is recorded against.
+function routeBand(difficulty: number | undefined): "light" | "moderate" | "hard" {
+  const d = typeof difficulty === "number" ? difficulty : 3;
+  if (d <= 2) return "light";
+  if (d === 3) return "moderate";
+  return "hard";
+}
+
 // Routing chip for an Auto turn: shows the model the engine chose + why, with a
-// one-click override that pins that concrete model as the runtime's default.
+// one-click override that pins that concrete model as the runtime's default. The
+// same click also feeds the LEARNED router: it emits a route-override signal so
+// Auto personalizes this bucket (domain + difficulty band) over time.
 function RouteChip({ route }: { route: RouteInfo }) {
   const [pinned, setPinned] = useState(false);
   const pct = Math.round((route.confidence ?? 0) * 100);
@@ -30,6 +42,12 @@ function RouteChip({ route }: { route: RouteInfo }) {
     // next turn runs it directly (the composer reads this key live at send time).
     setPref(`prevail.model.${route.cli}`, route.model);
     window.dispatchEvent(new Event("prevail:models-refreshed"));
+    // Feed the learned router: record that the user chose this model for this
+    // bucket. A ChatPanel listener (which knows the domain + vault) persists it
+    // via the route_learn_record engine command. Best-effort, never blocks.
+    window.dispatchEvent(new CustomEvent("prevail:route-override", {
+      detail: { band: routeBand(route.difficulty), fromModel: route.model, toModel: route.model },
+    }));
     setPinned(true);
   };
   const detail = [route.reason, `${pct}% confidence`].filter(Boolean).join(" · ");

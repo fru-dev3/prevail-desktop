@@ -644,6 +644,7 @@ pub fn run() {
             engine::engine_list_archived,
             engine::engine_manifest_set,
             engine::engine_chat,
+            engine::route_learn_record,
             engine::engine_agent_run,
             engine::engine_app_run_skill,
             threads::list_threads,
