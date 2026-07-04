@@ -572,7 +572,7 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
 
   // Per-loop "Run now": run this one loop immediately, apply per its autonomy, and
   // show exactly what it did (actions + dispositions, tasks created, approvals).
-  type RunResult = { ok: boolean; note: string; done: boolean; actions: { text: string; disposition: "task" | "approval" | "suggested" }[]; tasksCreated: string[]; pending: string[]; briefing?: string; error?: string };
+  type RunResult = { ok: boolean; note: string; done: boolean; actions: { text: string; disposition: "task" | "approval" | "suggested" | "done" }[]; tasksCreated: string[]; pending: string[]; briefing?: string; error?: string };
   const isBriefing = loop.kind === "briefing";
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -793,8 +793,8 @@ function LoopCard({ loop, rt, open, onToggleOpen, onChange, onRemove, vaultPath,
                     <ul className="space-y-1">
                       {result.actions.map((a, i) => (
                         <li key={i} className="flex items-start gap-2 text-[11px] text-text-secondary">
-                          <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0 font-mono text-[10px] uppercase tracking-wider ${a.disposition === "task" ? "bg-accent-soft text-accent" : a.disposition === "approval" ? "bg-warn/15 text-warn" : "bg-surface-warm text-text-muted"}`}>
-                            {a.disposition === "task" ? <><ListPlus className="h-2.5 w-2.5" /> task</> : a.disposition === "approval" ? <><ShieldQuestion className="h-2.5 w-2.5" /> approval</> : "idea"}
+                          <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0 font-mono text-[10px] uppercase tracking-wider ${a.disposition === "done" ? "bg-ok/15 text-ok" : a.disposition === "task" ? "bg-accent-soft text-accent" : a.disposition === "approval" ? "bg-warn/15 text-warn" : "bg-surface-warm text-text-muted"}`}>
+                            {a.disposition === "done" ? <><Check className="h-2.5 w-2.5" /> done</> : a.disposition === "task" ? <><ListPlus className="h-2.5 w-2.5" /> task</> : a.disposition === "approval" ? <><ShieldQuestion className="h-2.5 w-2.5" /> approval</> : "idea"}
                           </span>
                           <span>{a.text}</span>
                         </li>
