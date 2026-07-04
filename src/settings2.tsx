@@ -2,7 +2,7 @@
 // Tasks, Intents, Memory & Context, and Skills. vaultPath-driven; no App-root
 // state closure.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bell, Brain, Check, ChevronRight, Folder, GraduationCap, Laptop, Lightbulb, ListChecks, Loader2, Pencil, Server, Sparkles, Upload, X } from "lucide-react";
+import { ArrowRight, Bell, Brain, Check, ChevronRight, Eye, Folder, GraduationCap, Laptop, Lightbulb, ListChecks, Loader2, MessageSquarePlus, Server, Sparkles, Upload, X } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
@@ -1024,6 +1024,19 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
   async function openSkill(p: string) {
     try { await invoke("open_in_finder", { path: p }); } catch {}
   }
+  // View a skill's SKILL.md inline, without leaving the app.
+  const [viewer, setViewer] = useState<{ name: string; body: string } | null>(null);
+  async function viewSkill(s: SkillEntry) {
+    try { setViewer({ name: s.name, body: await invoke<string>("read_skill", { path: s.path }) }); }
+    catch (e) { setViewer({ name: s.name, body: `Could not read this skill: ${String(e)}` }); }
+  }
+  // Open a chat in the skill's domain (or General) with a ready prompt to run it.
+  function useSkillInChat(s: SkillEntry) {
+    lsSet("prevail.compose.pending", `Run the "${s.name}" skill.`);
+    const dom = s.domain && s.domain.toLowerCase() !== "general" ? s.domain : "";
+    window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: dom }));
+    window.dispatchEvent(new CustomEvent("prevail:compose-seed"));
+  }
   // B2-5: pick a SKILL.md (or .md) and stage it for install.
   async function pickSkillFile() {
     setUploadMsg(null);
@@ -1156,32 +1169,46 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
                   const cleaned = (s.description ?? "").replace(/^[>*\-\s]+/, "").trim();
                   return (
                     <li key={s.path}>
-                      <button
-                        onClick={() => openSkill(s.path)}
-                        title={`Open ${s.name} in Finder to edit`}
-                        className="group flex w-full items-start gap-3.5 rounded-xl px-3 py-3 text-left transition-colors hover:bg-surface-warm"
-                      >
-                        {/* Calm, uniform tile (no per-skill rainbow). */}
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-warm text-text-secondary ring-1 ring-border-subtle group-hover:text-accent">
-                          <Sparkles className="h-4 w-4" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-baseline gap-2">
-                            <span className="font-display text-base font-semibold tracking-tight text-text-primary">{s.name}</span>
-                            <span className="rounded-md border border-border-subtle bg-background px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                              {titleCase(s.domain)}
-                            </span>
+                      <div className="group relative flex w-full items-start gap-3.5 rounded-xl px-3 py-3 pb-8 transition-colors hover:bg-surface-warm">
+                        <button
+                          onClick={() => viewSkill(s)}
+                          title={`View ${s.name}`}
+                          className="flex min-w-0 flex-1 items-start gap-3.5 text-left"
+                        >
+                          {/* Calm, uniform tile (no per-skill rainbow). */}
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-warm text-text-secondary ring-1 ring-border-subtle group-hover:text-accent">
+                            <Sparkles className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-baseline gap-2">
+                              <span className="font-display text-base font-semibold tracking-tight text-text-primary">{s.name}</span>
+                              <span className="rounded-md border border-border-subtle bg-background px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                                {titleCase(s.domain)}
+                              </span>
+                            </div>
+                            {cleaned && (
+                              <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-text-secondary">
+                                {cleaned}
+                              </p>
+                            )}
                           </div>
-                          {cleaned && (
-                            <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-text-secondary">
-                              {cleaned}
-                            </p>
-                          )}
+                        </button>
+                        {/* Minimal per-skill actions: revealed only on row hover, bottom-right. */}
+                        <div className="absolute bottom-1.5 right-2 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                          <button onClick={() => viewSkill(s)} title="View skill here" aria-label="View skill here"
+                            className="rounded-md p-1.5 text-text-muted transition-colors hover:bg-surface hover:text-accent">
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={() => openSkill(s.path)} title="Reveal in Finder" aria-label="Reveal in Finder"
+                            className="rounded-md p-1.5 text-text-muted transition-colors hover:bg-surface hover:text-accent">
+                            <Folder className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={() => useSkillInChat(s)} title="Use in a chat" aria-label="Use in a chat"
+                            className="rounded-md p-1.5 text-text-muted transition-colors hover:bg-surface hover:text-accent">
+                            <MessageSquarePlus className="h-3.5 w-3.5" />
+                          </button>
                         </div>
-                        <span className="mt-1 inline-flex shrink-0 items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-text-muted opacity-0 transition-opacity group-hover:opacity-100">
-                          <Pencil className="h-3.5 w-3.5" /> edit
-                        </span>
-                      </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -1190,6 +1217,21 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
           </>
         )}
       </div>
+      {viewer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setViewer(null)}>
+          <div className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+              <div className="flex min-w-0 items-center gap-2 font-display text-sm font-semibold text-text-primary">
+                <Sparkles className="h-4 w-4 shrink-0 text-accent" /> <span className="truncate">{viewer.name}</span>
+              </div>
+              <button onClick={() => setViewer(null)} aria-label="Close" className="rounded-md p-1 text-text-muted hover:bg-surface-warm hover:text-text-primary">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <pre className="overflow-auto whitespace-pre-wrap px-4 py-3 font-mono text-[12.5px] leading-relaxed text-text-secondary">{viewer.body}</pre>
+          </div>
+        </div>
+      )}
     </>
   );
 }
