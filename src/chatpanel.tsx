@@ -1421,19 +1421,47 @@ export function ChatPanel({
               break;
             }
             case "tool": {
-              // Ground-truth tool activity from an Act/agent run - the REAL tools
-              // the model invoked. Collect onto the streaming bubble as a "tools
-              // used" strip so the user sees what actually ran (not model prose).
+              // Ground-truth tool activity - the REAL tools the model invoked, on
+              // BOTH the chat and Act/agent streams. Rendered as a live checklist
+              // under the bubble so the user sees WHAT a long job is doing. The
+              // engine sends a structured `step` (id + label + running/done/failed);
+              // older/agent events send only `text`, which we fold in as a
+              // one-shot completed step so nothing regresses.
+              const step = ev.step;
               const note = stripAnsi(ev.text ?? "").trim();
-              if (note) {
+              // A plan update (from the model's TodoWrite) renders as the Plan
+              // header; replace any prior plan with the latest revision.
+              if (ev.plan && ev.plan.length) {
+                const nextPlan = ev.plan;
                 setMessages((m) => {
                   const last = m[m.length - 1];
-                  if (last && last.streaming) {
-                    return [...m.slice(0, -1), { ...last, toolLog: [...(last.toolLog ?? []), note] }];
-                  }
-                  return m;
+                  if (!last || !last.streaming) return m;
+                  return [...m.slice(0, -1), { ...last, plan: nextPlan }];
                 });
+                break;
               }
+              if (!step && !note) break;
+              setMessages((m) => {
+                const last = m[m.length - 1];
+                if (!last || !last.streaming) return m;
+                const steps = [...(last.steps ?? [])];
+                if (step && step.id) {
+                  const i = steps.findIndex((s) => s.id === step.id);
+                  if (step.status === "running") {
+                    if (i === -1) steps.push({ id: step.id, label: step.label || note || "Working", status: "running", startedAt: Date.now() });
+                    else steps[i] = { ...steps[i], label: step.label || steps[i].label };
+                  } else if (i !== -1) {
+                    steps[i] = { ...steps[i], status: step.status, endedAt: Date.now(), label: step.label || steps[i].label };
+                  } else {
+                    // A result with no prior running step (rare): show it already finished.
+                    steps.push({ id: step.id, label: step.label || note || "Working", status: step.status, startedAt: Date.now(), endedAt: Date.now() });
+                  }
+                } else {
+                  // Legacy text-only tool note (agent path): a completed step.
+                  steps.push({ id: `note-${steps.length}`, label: note, status: "done", startedAt: Date.now(), endedAt: Date.now() });
+                }
+                return [...m.slice(0, -1), { ...last, steps }];
+              });
               break;
             }
             case "done":

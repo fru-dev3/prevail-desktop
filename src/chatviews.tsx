@@ -1,7 +1,7 @@
 // Chat-display leaf components extracted from App.tsx: ChatBubble (one rendered
 // turn), MessageList (windowed transcript), DomainStatusBar, and DomainHome.
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, ListPlus, NotebookPen, Pin, Repeat, SlidersHorizontal, Sparkles, User } from "lucide-react";
+import { ArrowRight, Check, ListPlus, NotebookPen, Pin, Repeat, SlidersHorizontal, Sparkles, User, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, MODELS } from "./constants";
 import { titleCase } from "./format";
@@ -129,6 +129,77 @@ function RouteChip({ route, onRerun }: { route: RouteInfo; onRerun?: () => void 
         </>
       )}
     </span>
+  );
+}
+
+// Compact elapsed-time formatter for the step checklist ("18s", "2m 4s").
+function elapsedLabel(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  return `${m}m ${s % 60}s`;
+}
+
+// The live "what is it doing" view under a running assistant bubble: an optional
+// Plan header the model declared, then a checklist of the REAL steps as they run
+// (Reading Gmail, Creating a Google Doc, Saving to Drive) with status + elapsed.
+// A heartbeat re-renders each second while a step runs, so a long step reads
+// "still working (18s)" instead of a dead spinner. Shown identically for app and
+// domain chats (they share the message/stream path).
+function StepChecklist({ msg, accent }: { msg: ChatMessage; accent: string }) {
+  const steps = msg.steps ?? [];
+  const plan = msg.plan ?? [];
+  const running = steps.some((s) => s.status === "running");
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!running) return;
+    const id = window.setInterval(() => setTick((t) => (t + 1) % 1_000_000), 1000);
+    return () => window.clearInterval(id);
+  }, [running]);
+  if (steps.length === 0 && plan.length === 0) return null;
+  const now = Date.now();
+  return (
+    <div className="mb-2.5 flex flex-col gap-1 rounded-lg border border-border-subtle bg-background/40 px-3 py-2">
+      {plan.length > 0 && (
+        <div className="mb-1 flex flex-col gap-0.5">
+          <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-text-muted">Plan</div>
+          <ol className="flex flex-col gap-0.5">
+            {plan.map((p, i) => (
+              <li key={i} className="font-mono text-[11px] leading-relaxed text-text-secondary">{i + 1}. {p}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {steps.length > 0 && (
+        <>
+          <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-text-muted">
+            {running ? "Working" : "Steps · verified"}
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {steps.map((s) => {
+              const dur = elapsedLabel((s.endedAt ?? now) - s.startedAt);
+              return (
+                <div key={s.id} className="flex items-center gap-2 font-mono text-[11px] leading-relaxed">
+                  <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                    {s.status === "running" ? (
+                      <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
+                    ) : s.status === "failed" ? (
+                      <X className="h-3 w-3 text-warn" />
+                    ) : (
+                      <Check className="h-3 w-3" style={{ color: accent }} />
+                    )}
+                  </span>
+                  <span className={s.status === "failed" ? "text-warn" : s.status === "running" ? "text-text-primary" : "text-text-secondary"}>
+                    {s.label}
+                  </span>
+                  <span className="shrink-0 text-text-muted/70">· {dur}{s.status === "running" ? "…" : ""}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -288,7 +359,9 @@ export function ChatBubble({
           }`}
           style={bubbleStyle}
         >
-          {msg.toolLog && msg.toolLog.length > 0 && (
+          <StepChecklist msg={msg} accent={accent} />
+          {/* Back-compat: legacy persisted turns that only carried a flat toolLog. */}
+          {(!msg.steps || msg.steps.length === 0) && msg.toolLog && msg.toolLog.length > 0 && (
             <div className="mb-2.5 flex flex-col gap-0.5 rounded-lg border border-border-subtle bg-background/40 px-3 py-2">
               <div className="mb-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-text-muted">Tools used · verified</div>
               {msg.toolLog.map((t, i) => (
