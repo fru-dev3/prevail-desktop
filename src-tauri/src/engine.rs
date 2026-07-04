@@ -2846,6 +2846,10 @@ pub async fn engine_chat(
     // Economy / Balanced / Quality bias for the Auto router. Only meaningful when
     // model == "auto"; forwarded verbatim as --route-bias. None => engine default.
     #[allow(non_snake_case)] routeBias: Option<String>,
+    // Layer 4 cascade escalation (opt-in). Only meaningful when model == "auto";
+    // forwarded as --route-cascade when Some(true). None / Some(false) => the
+    // engine's default (off), so today's single-turn behavior is unchanged.
+    #[allow(non_snake_case)] routeCascade: Option<bool>,
     // The user's Google-account chip selection (composer Modes). Forwarded as
     // --google-account so the google_workspace connector targets the chosen
     // account authoritatively. Comma-joined for multiple; None => default account.
@@ -2906,6 +2910,12 @@ pub async fn engine_chat(
     if let Some(b) = routeBias.filter(|s| !s.is_empty()) {
         args.push("--route-bias".to_string());
         args.push(b);
+    }
+    // Forward cascade escalation only when explicitly enabled. The engine ignores
+    // it unless the model is "auto", and absent it defaults off, so this is safe
+    // to pass on every turn and keeps non-auto / cascade-off turns unchanged.
+    if routeCascade.unwrap_or(false) {
+        args.push("--route-cascade".to_string());
     }
     // Forward the picked Google account(s) so the connector targets them. Safe to
     // pass on every turn: the engine only wires it into the google_workspace

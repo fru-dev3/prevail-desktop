@@ -790,6 +790,43 @@ function RouteBiasControl() {
         ))}
       </div>
       <div className="mt-1 font-mono text-[9px] text-text-muted">{opts.find((o) => o.id === bias)?.blurb}</div>
+      <RouteCascadeControl />
+    </div>
+  );
+}
+
+// Cascade escalation for the "Auto" router (Layer 4). OPT-IN, default OFF.
+// Persisted globally at prevail.route.cascade and forwarded to the engine only
+// on auto turns. When on, an ambiguous-middle prompt is answered by a cheaper
+// model first and escalated to the stronger pick only if a confidence check
+// fails, so it can cost up to two model calls (slower, but cheaper when the
+// first answer holds). Obvious easy/hard prompts never cascade.
+export const ROUTE_CASCADE_KEY = "prevail.route.cascade";
+function RouteCascadeControl() {
+  const read = (): boolean => lsGet(ROUTE_CASCADE_KEY, "0") === "1";
+  const [on, setOn] = useState<boolean>(read);
+  useEffect(() => {
+    const h = () => setOn(read());
+    window.addEventListener("prevail:route-cascade-changed", h);
+    return () => window.removeEventListener("prevail:route-cascade-changed", h);
+  }, []);
+  const toggle = () => {
+    const next = !on;
+    setOn(next);
+    lsSet(ROUTE_CASCADE_KEY, next ? "1" : "0");
+    window.dispatchEvent(new Event("prevail:route-cascade-changed"));
+  };
+  return (
+    <div className="mt-2 border-t border-accent-border/30 pt-2">
+      <button onClick={toggle} className="flex w-full items-start gap-2 text-left" aria-pressed={on}>
+        <span className={`mt-0.5 inline-flex h-4 w-7 shrink-0 items-center rounded-full border transition-colors ${on ? "border-accent-border bg-accent" : "border-border bg-background"}`}>
+          <span className={`h-3 w-3 rounded-full bg-background shadow-sm transition-transform ${on ? "translate-x-3.5 bg-background" : "translate-x-0.5 bg-text-muted"}`} />
+        </span>
+        <span className="min-w-0">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-text-primary">Cascade escalation {on ? "on" : "off"}</span>
+          <span className="mt-0.5 block font-mono text-[9px] leading-snug text-text-muted">Answer ambiguous prompts with a cheaper model first, escalate only if it is not confident. Can use two model calls, so it is slower but often cheaper.</span>
+        </span>
+      </button>
     </div>
   );
 }
