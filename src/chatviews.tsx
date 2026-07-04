@@ -736,15 +736,25 @@ export function DomainStatusBar({
         {googleInContext && gProfiles.length > 0 && (
           <div ref={gRef} className="relative inline-flex items-center">
             <span className="mx-1 select-none text-text-muted/40">·</span>
+            {/* With 2+ connected accounts and none picked, Prevail will refuse to
+                guess which identity to act as - make the required pick visible
+                here instead of only in the refusal message. */}
             <button
               onClick={() => setGOpen((v) => !v)}
-              title="Choose which Google account(s) this domain uses"
+              title={gProfiles.length > 1 && gSelected.length === 0
+                ? "Multiple Google accounts are connected - pick which one(s) this conversation acts as"
+                : "Choose which Google account(s) this domain uses"}
               className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
-                gOpen ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-surface text-text-muted hover:bg-surface-warm hover:text-text-secondary"
+                gOpen
+                  ? "border-accent-border bg-accent-soft text-accent"
+                  : gProfiles.length > 1 && gSelected.length === 0
+                    ? "border-warn/50 bg-warn/10 text-warn hover:bg-warn/15"
+                    : "border-border bg-surface text-text-muted hover:bg-surface-warm hover:text-text-secondary"
               }`}
             >
               {(() => {
                 const sel = gProfiles.filter((p) => gSelected.includes(p.label));
+                if (sel.length === 0 && gProfiles.length > 1) return (<><span className="flex h-4 w-4 items-center justify-center rounded-full bg-warn/20 text-[9px] font-bold text-warn">G</span> Pick account</>);
                 if (sel.length === 0) return (<><span className="flex h-4 w-4 items-center justify-center rounded-full bg-surface-warm text-[9px] font-bold text-text-secondary">G</span> Google</>);
                 if (sel.length === 1) { const who = sel[0].email || sel[0].label; return (<><span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-background">{(who || "?").charAt(0).toUpperCase()}</span> <span className="normal-case">{who.split("@")[0] || who}</span></>); }
                 return (<><span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-background">{sel.length}</span> accounts</>);

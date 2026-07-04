@@ -16,14 +16,19 @@ describe("inheritedGoogleAccount", () => {
     expect(inheritedGoogleAccount([], ["work"], false)).toBeNull();
   });
 
-  it("Google attached, nothing picked, default connected => inherit default", () => {
-    expect(inheritedGoogleAccount([], ["default", "work"], true)).toBe("default");
+  it("Google attached, nothing picked, MULTIPLE accounts connected => null (never guess)", () => {
+    // Acting as the wrong identity is worse than asking: with 2+ connected
+    // accounts and no pick, leave it unset so the engine refuses with the
+    // connected labels and the user picks in Modes. No label (not even
+    // "default") is ever preferred - profiles are machine-specific.
+    expect(inheritedGoogleAccount([], ["default", "work"], true)).toBeNull();
+    expect(inheritedGoogleAccount([], ["home", "work"], true)).toBeNull();
   });
 
-  it("Google attached, nothing picked, only a labeled account connected => inherit it (the fix)", () => {
-    // The user authorized only "work" from the Google panel; the domain chat must
-    // act for "work", not fall back to an unauthorized default.
+  it("Google attached, nothing picked, exactly ONE account connected => inherit it, whatever its label", () => {
+    // Unambiguous, so zero friction - this is the domain-chat fix.
     expect(inheritedGoogleAccount([], ["work"], true)).toBe("work");
+    expect(inheritedGoogleAccount([], ["default"], true)).toBe("default");
   });
 
   it("Google attached but no connected accounts => null (honest, nothing to inherit)", () => {
