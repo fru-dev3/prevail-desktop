@@ -1821,6 +1821,9 @@ export function ChatPanel({
         thread: activeThreadRef.current,
         cli: chatCli ?? null,
         model: turnModel,
+        // Provenance surface: which composer this came from. host/app/version
+        // are stamped server-side by intent_append.
+        surface: isApp ? "app-chat" : "chat",
         message: maybeRedact(visible), // what the user typed
         prompt: maybeRedact(promptText), // the exact, fully-assembled prompt sent to the model
         prefs,
