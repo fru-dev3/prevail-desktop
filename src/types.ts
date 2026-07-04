@@ -5,6 +5,11 @@ export interface ModelPick {
   id: string;
   label: string;
   blurb?: string;
+  // For ALIAS ids (opus/sonnet/haiku) that the runtime resolves at launch: the
+  // exact versioned model id the alias currently points to. Curated next to the
+  // label (bump both when a new release ships) so the journal can record the
+  // precise model, not the alias.
+  resolved?: string;
 }
 
 export type Brand = { path: string; hex: string; title: string };
