@@ -3079,6 +3079,10 @@ pub async fn engine_chat(
     // --google-account so the google_workspace connector targets the chosen
     // account authoritatively. Comma-joined for multiple; None => default account.
     #[allow(non_snake_case)] googleAccount: Option<String>,
+    // App-chat passthrough: also expose the user's own Claude Code MCP servers
+    // (their claude.ai connectors, e.g. PayPal) to this turn. Forwarded as
+    // --inherit-user-mcp when true; absent/false keeps the strict surface.
+    #[allow(non_snake_case)] inheritUserMcp: Option<bool>,
 ) -> Result<(), String> {
     // Build the arg vector. `--vault V` goes BEFORE the subcommand,
     // matching every other engine command here.
@@ -3148,6 +3152,9 @@ pub async fn engine_chat(
     if let Some(g) = googleAccount.filter(|s| !s.trim().is_empty()) {
         args.push("--google-account".to_string());
         args.push(g);
+    }
+    if inheritUserMcp.unwrap_or(false) {
+        args.push("--inherit-user-mcp".to_string());
     }
 
     run_engine_stream_stdin(app, session, args, message, "engine-chat", extra_env).await
