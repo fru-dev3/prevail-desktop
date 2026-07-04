@@ -1,7 +1,7 @@
 // Chat-display leaf components extracted from App.tsx: ChatBubble (one rendered
 // turn), MessageList (windowed transcript), DomainStatusBar, and DomainHome.
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, ListPlus, NotebookPen, Pin, Repeat, SlidersHorizontal, Sparkles, User, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronRight, ListPlus, NotebookPen, Pin, Repeat, SlidersHorizontal, Sparkles, User, X } from "lucide-react";
 import { invoke } from "./bridge";
 import { FRAMEWORKS, LENSES, MODELS } from "./constants";
 import { titleCase } from "./format";
@@ -150,6 +150,12 @@ function StepChecklist({ msg, accent }: { msg: ChatMessage; accent: string }) {
   const steps = msg.steps ?? [];
   const plan = msg.plan ?? [];
   const running = steps.some((s) => s.status === "running");
+  const failed = steps.filter((s) => s.status === "failed").length;
+  // Collapsible: the header is always visible (count + live current step), the
+  // full list toggles. The choice persists globally so users who find the
+  // checklist noisy see one quiet line everywhere until they opt back in.
+  const [collapsed, setCollapsed] = useState(() => getPref("prevail.steps.collapsed", "0") === "1");
+  const toggleCollapsed = () => setCollapsed((c) => { const n = !c; setPref("prevail.steps.collapsed", n ? "1" : "0"); return n; });
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!running) return;
@@ -158,9 +164,26 @@ function StepChecklist({ msg, accent }: { msg: ChatMessage; accent: string }) {
   }, [running]);
   if (steps.length === 0 && plan.length === 0) return null;
   const now = Date.now();
+  const current = steps.find((s) => s.status === "running");
   return (
     <div className="mb-2.5 flex flex-col gap-1 rounded-lg border border-border-subtle bg-background/40 px-3 py-2">
-      {plan.length > 0 && (
+      <button
+        type="button"
+        onClick={toggleCollapsed}
+        aria-expanded={!collapsed}
+        title={collapsed ? "Show the full step list" : "Collapse to one line"}
+        className="flex items-center gap-1.5 text-left font-mono text-[9px] uppercase tracking-[0.16em] text-text-muted hover:text-text-secondary"
+      >
+        {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        {running ? "Working" : "Steps · verified"} · {steps.length}{failed > 0 ? ` · ${failed} failed` : ""}
+        {collapsed && current && (
+          <span className="ml-1 inline-flex min-w-0 items-center gap-1.5 normal-case tracking-normal">
+            <span className="pulse-soft inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: accent }} />
+            <span className="truncate text-[11px] text-text-secondary">{current.label} · {elapsedLabel(now - current.startedAt)}…</span>
+          </span>
+        )}
+      </button>
+      {!collapsed && plan.length > 0 && (
         <div className="mb-1 flex flex-col gap-0.5">
           <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-text-muted">Plan</div>
           <ol className="flex flex-col gap-0.5">
@@ -170,12 +193,9 @@ function StepChecklist({ msg, accent }: { msg: ChatMessage; accent: string }) {
           </ol>
         </div>
       )}
-      {steps.length > 0 && (
+      {!collapsed && steps.length > 0 && (
         <>
-          <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-text-muted">
-            {running ? "Working" : "Steps · verified"}
-          </div>
-          <div className="flex flex-col gap-0.5">
+          <div className="flex max-h-56 flex-col gap-0.5 overflow-y-auto">
             {steps.map((s) => {
               const dur = elapsedLabel((s.endedAt ?? now) - s.startedAt);
               return (
