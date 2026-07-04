@@ -31,7 +31,24 @@ type Profile = { configDir: string; label: string; email: string | null; status:
 // The Google app id used for the shared Skills / Soul / Connections engine
 // commands - identical to what the generic AppDetail uses for any other app.
 const GOOGLE_APP_ID = "google";
-const GOOGLE_WEBSITE = "https://workspace.google.com";
+// Where a browser-learn for Google starts. This must be the live PRODUCT (the
+// signed-in Gmail app), NOT workspace.google.com (the marketing site), so the
+// agent lands in the actual inbox and the recorded steps replay against real
+// mail. Gmail is the default surface; the user can navigate to Calendar/Drive
+// from here, and it forces the Google login the learn flow needs.
+export const GOOGLE_WEBSITE = "https://mail.google.com";
+
+// Consequential Gmail/Workspace verbs. Browser automation is READ-ONLY, so a
+// goal that asks to send / archive / delete / label cannot be fulfilled by a
+// browser-learn - it must go through the Google connector (gws-mcp, exposed to
+// the agent as the google_workspace tool), which can send and archive (queued
+// for the user's approval). We detect this up front and route the user there
+// instead of opening a read-only browser that will just refuse the goal.
+const CONSEQUENTIAL_GOAL_RE =
+  /\b(send|reply|replies|respond|forward|archive|delete|trash|remove|label|star|mark|move|draft|compose|schedule|create|invite|rsvp|accept|decline|share|unsubscribe|snooze)\b/i;
+export function goalNeedsConnector(goal: string): boolean {
+  return CONSEQUENTIAL_GOAL_RE.test(goal || "");
+}
 
 // A runnable skill as the UI displays it (same contract the engine returns for
 // every app). We only DISPLAY what the engine returns.
@@ -190,6 +207,10 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
   const [learnMode, setLearnMode] = useState<ConnectorRunMode | null>(null);
   const [composing, setComposing] = useState(false);
   const [goalText, setGoalText] = useState("");
+  // Set when the typed goal is a consequential action (send/archive/...) that the
+  // read-only browser can't do but the Google connector can. Shows guidance to
+  // use the connector (chat / Act mode) instead of opening the browser.
+  const [connectorHint, setConnectorHint] = useState(false);
 
   // Soul (apps/google/soul.md), same construct any app uses.
   const [soulText, setSoulText] = useState("");
@@ -633,15 +654,38 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
             ) : composing ? (
               <div className="mt-3 space-y-2 rounded-lg border border-border-subtle bg-surface p-3">
                 <div className="flex items-center gap-1.5 text-[13px] font-medium text-text-primary"><Sparkles className="h-4 w-4 text-accent" /> Tell me what to do</div>
-                <textarea autoFocus rows={3} value={goalText} onChange={(e) => setGoalText(e.target.value)}
+                <textarea autoFocus rows={3} value={goalText}
+                  onChange={(e) => { setGoalText(e.target.value); if (connectorHint) setConnectorHint(false); }}
                   placeholder={'e.g. "Each morning, summarize my unread Gmail and the day on my Calendar."'}
                   className="w-full resize-none rounded-md border border-border bg-background px-2.5 py-2 text-[13px] text-text-primary placeholder:text-text-muted/60 focus:border-accent-border focus:outline-none" />
-                <div className="flex items-center gap-2">
-                  <button onClick={() => { setComposing(false); setLearnMode("learn"); }} disabled={!goalText.trim()}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-40"><Sparkles className="h-3.5 w-3.5" /> Start learning</button>
-                  <button onClick={() => setComposing(false)} className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary">Cancel</button>
-                </div>
-                <p className="text-[11px] text-text-muted">I'll learn the steps and remember them so you can run this again any time.</p>
+                {connectorHint ? (
+                  // The goal asks for a send/archive/delete style action. The
+                  // browser here is read-only and would refuse it; the Google
+                  // connector can do it (queued for your approval). Route there.
+                  <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
+                    <div className="text-[12px] font-semibold text-text-primary">Gmail has a connector that can do this</div>
+                    <div className="text-[11px] leading-snug text-text-muted">
+                      Learning a browser only teaches Prevail to READ pages, so it can't send, reply, archive, or delete. Google is connected through a tool that can, sending and changes wait for your OK under Needs you. Ask in chat instead, for example: "{goalText.trim()}".
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { setConnectorHint(false); setComposing(false); setLearnMode("learn"); }}
+                        className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary">Teach a read-only flow anyway</button>
+                      <button onClick={() => { setConnectorHint(false); setComposing(false); }}
+                        className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { if (goalNeedsConnector(goalText)) { setConnectorHint(true); return; } setComposing(false); setLearnMode("learn"); }}
+                        disabled={!goalText.trim()}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-40"><Sparkles className="h-3.5 w-3.5" /> Start learning</button>
+                      <button onClick={() => { setConnectorHint(false); setComposing(false); }} className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary">Cancel</button>
+                    </div>
+                    <p className="text-[11px] text-text-muted">I'll learn the steps and remember them so you can run this again any time.</p>
+                  </>
+                )}
               </div>
             ) : (
               <>

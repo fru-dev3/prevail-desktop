@@ -1764,6 +1764,17 @@ export function ChatPanel({
     // engine isn't available we fall through to normal chat so a turn is never
     // silently dropped.
     const actMode = !!domain && !isBunkerOn() && engineAvailable && getDomainToggle(domain, "act", false);
+    // The user's Google-account chip selection (composer Modes). Threaded to the
+    // engine as an AUTHORITATIVE default target account so the google_workspace
+    // connector acts on the picked account even if the model omits an `account:`
+    // tool-arg (the prompt note below is now belt-and-braces, not the only
+    // signal). Comma-joined for multiple; empty selection => default account.
+    let pickedGoogleAccounts: string[] = [];
+    try {
+      const parsed = JSON.parse(getPref(`prevail.domain.${domain}.googleAccounts`, "[]")) as string[];
+      if (Array.isArray(parsed)) pickedGoogleAccounts = parsed.filter((s) => typeof s === "string" && s.trim());
+    } catch { /* no valid selection, act on the default account */ }
+    const googleAccountArg = pickedGoogleAccounts.length > 0 ? pickedGoogleAccounts.join(",") : null;
     if (chatCli && ENGINE_ONLY.has(chatCli) && !useEngine) {
       const label = chatCli === "openrouter" ? "OpenRouter" : chatCli === "lmstudio" ? "LM Studio" : "oMLX";
       setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `${label} runs through the engine, which isn't available right now. Make sure the Prevail engine is installed, then try again.`, ts: Date.now(), cli: chatCli, model: chatModel ?? undefined }]);
@@ -1781,13 +1792,9 @@ export function ChatPanel({
         // If the user picked specific Google account(s) in Modes, tell the agent
         // which profile(s) to act for so google_workspace targets the right
         // inbox(es) and labels results by account (multi-profile in one send).
-        let gAccNote = "";
-        try {
-          const picked = JSON.parse(getPref(`prevail.domain.${domain}.googleAccounts`, "[]")) as string[];
-          if (Array.isArray(picked) && picked.length > 0) {
-            gAccNote = `\n\n[Google accounts to act for: ${picked.join(", ")}. For each Google/gmail/calendar/drive action, pass account:"<label>" to the google_workspace tool, and label any results by account.]`;
-          }
-        } catch { /* no valid selection — act on the default account */ }
+        const gAccNote = pickedGoogleAccounts.length > 0
+          ? `\n\n[Google accounts to act for: ${pickedGoogleAccounts.join(", ")}. For each Google/gmail/calendar/drive action, pass account:"<label>" to the google_workspace tool, and label any results by account.]`
+          : "";
         const agentGoal = `${attachPreamble}${primedPreamble}${skillsPreamble}${visible}${gAccNote}`.trim();
         await invoke("engine_agent_run", {
           session: sessionRef.current,
@@ -1797,6 +1804,8 @@ export function ChatPanel({
           cli: chatCli || null,
           model: chatModel,
           autonomy: "auto",
+          // Authoritative default account for the google_workspace connector.
+          googleAccount: googleAccountArg,
         });
       } else if (useEngine) {
         await invoke("engine_chat", {
@@ -1811,6 +1820,8 @@ export function ChatPanel({
           // Economy / Balanced / Quality bias for the Auto router. Only consulted
           // by the engine when model === "auto"; harmless otherwise.
           routeBias: chatModel === "auto" ? getPref("prevail.route.bias", "balanced") : null,
+          // Authoritative default account for the google_workspace connector.
+          googleAccount: googleAccountArg,
         });
       } else {
         await invoke("chat_send", {
