@@ -233,6 +233,37 @@ pub(crate) fn safe_domain_subdir(vault: &str, domain: &Option<String>, sub: &str
     Ok(base.join(sub))
 }
 
+// Every directory a domain's markdown thread files may physically live in,
+// canonical (v4) home FIRST. On a v4-migrated domain safe_domain_subdir remaps
+// `_threads` -> `memory/threads`, but the v4 migrator only COPIES (the original
+// `_threads/` stays) and non-v4-aware writers (older builds, the engine) still
+// target the flat `_threads/`. Readers MUST look in EVERY one of these or the
+// v4 remap silently hides a thread (the reported disappearance). Same domain
+// safety as safe_domain_subdir: an unsafe domain is rejected, not redirected.
+pub(crate) fn thread_search_dirs(vault: &str, domain: &Option<String>) -> Result<Vec<PathBuf>, String> {
+    let base = match domain {
+        Some(d) if is_general(d) => general_dir(vault),
+        Some(d) if is_safe_domain(d) => resolve_domain_base(vault, d),
+        Some(d) => return Err(format!("invalid domain: {d}")),
+        None => general_dir(vault),
+    };
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    // Canonical: memory/threads on a v4 domain, else the flat _threads.
+    let canonical = if is_v4_domain(&base) {
+        base.join("memory").join("threads")
+    } else {
+        base.join("_threads")
+    };
+    dirs.push(canonical);
+    // Legacy flat _threads/ — distinct only on a v4 domain, where migrated
+    // originals and engine-written files can still sit.
+    let legacy = base.join("_threads");
+    if !dirs.contains(&legacy) {
+        dirs.push(legacy);
+    }
+    Ok(dirs)
+}
+
 // Guard a frontend-supplied path before reading/writing it. Blocks traversal
 // and confines the operation to a Prevail-managed file shape (e.g. a thread
 // markdown under "/_threads/"). Critical now that some commands are reachable
