@@ -144,6 +144,10 @@ export const LOCAL_CLI_IDS = new Set(["ollama", "lmstudio", "mlx"]);
 
 export const MODELS: Record<string, ModelPick[]> = {
   claude: [
+    // "Auto" is a sentinel model id: the engine reads the prompt and routes it to
+    // the best model in this runtime (see model-routing.ts). Listed first so it
+    // reads as the smart default. Non-breaking: any other id is today's path.
+    { id: "auto",            label: "Auto",      blurb: "route to the best model" },
     // Labels show the ACTUAL model name/version - no "latest" tag. The alias ids
     // (opus/sonnet/haiku) still resolve to the current release at runtime, so
     // these run the right model; bump the label when Anthropic ships a new one.
@@ -165,11 +169,13 @@ export const MODELS: Record<string, ModelPick[]> = {
     // `-c model_reasoning_effort=<effort>`; minimal effort 400s, so
     // only default / medium / high are offered. All three are tested
     // working.
+    { id: "auto",           label: "Auto",             blurb: "route to the best model" },
     { id: "gpt-5.5",        label: "GPT-5.5",          blurb: "flagship · fast (default)" },
     { id: "gpt-5.5@medium", label: "GPT-5.5 (medium)", blurb: "balanced reasoning" },
     { id: "gpt-5.5@high",   label: "GPT-5.5 (high)",   blurb: "max reasoning · slower" },
   ],
   antigravity: [
+    { id: "auto",                         label: "Auto",                         blurb: "route to the best model" },
     { id: "Gemini 3.1 Pro (High)",        label: "Gemini 3.1 Pro (High)",        blurb: "extra reasoning" },
     { id: "Gemini 3.1 Pro (Low)",         label: "Gemini 3.1 Pro (Low)",         blurb: "flagship · less reasoning" },
     { id: "Gemini 3.5 Flash (High)",      label: "Gemini 3.5 Flash (High)",      blurb: "fast + reasoning" },
@@ -180,6 +186,7 @@ export const MODELS: Record<string, ModelPick[]> = {
     { id: "GPT-OSS 120B (Medium)",        label: "GPT-OSS 120B (Medium)",        blurb: "open model" },
   ],
   ollama: [
+    { id: "auto",     label: "Auto",       blurb: "route to the best local model" },
     { id: "llama3.2", label: "Llama 3.2",  blurb: "local · meta" },
     { id: "qwen2.5",  label: "Qwen 2.5",   blurb: "local · alibaba" },
     { id: "mistral",  label: "Mistral 7B", blurb: "local · mistral" },
