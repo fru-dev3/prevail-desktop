@@ -664,55 +664,11 @@ export function ChatPanel({
       .catch(() => { if (mounted) setAppSkillFiles([]); });
     return () => { mounted = false; };
   }, [isApp, appId]);
-  // Google multi-account: when the Google app is open AND more than one account
-  // is connected, let the user choose which account this chat acts as. With a
-  // single account there is no selector and no behavior change. The choice rides
-  // the existing context machinery: an "auto-google-account:" note tells the
-  // agent (which fronts gws through the gated gateway) which account to target.
-  type GoogleProfile = { configDir: string; label: string; email: string | null; status: string };
-  const isGoogleApp = !!isApp && appId === "google";
-  const [googleProfiles, setGoogleProfiles] = useState<GoogleProfile[]>([]);
-  const [googleAccount, setGoogleAccount] = useState<string>(() => lsGet("prevail.google.activeAccount") || "");
-  useEffect(() => {
-    if (!isGoogleApp) { setGoogleProfiles([]); return; }
-    let mounted = true;
-    invoke<GoogleProfile[]>("google_profiles")
-      .then((rows) => { if (mounted) setGoogleProfiles(Array.isArray(rows) ? rows : []); })
-      .catch(() => { if (mounted) setGoogleProfiles([]); });
-    return () => { mounted = false; };
-  }, [isGoogleApp]);
-  // Only connected accounts can actually be acted as.
-  const connectedGoogle = useMemo(
-    () => googleProfiles.filter((p) => p.status === "connected"),
-    [googleProfiles],
-  );
-  // Default the active account to the first connected one when unset or stale.
-  useEffect(() => {
-    if (connectedGoogle.length === 0) return;
-    if (!googleAccount || !connectedGoogle.some((p) => p.label === googleAccount)) {
-      setGoogleAccount(connectedGoogle[0]!.label);
-    }
-  }, [connectedGoogle, googleAccount]);
-  useEffect(() => { if (googleAccount) lsSet("prevail.google.activeAccount", googleAccount); }, [googleAccount]);
-  // Inject the active-account note only when there is a real choice (>1 connected
-  // account). Label "auto-google-account:" is independent of the "auto:" and
-  // "auto-app:" prefixes, so the other auto-prime effects leave it intact.
-  useEffect(() => {
-    if (!isGoogleApp || connectedGoogle.length < 2) {
-      setPrimedContext((cur) => cur.filter((x) => !x.label.startsWith("auto-google-account:")));
-      return;
-    }
-    const active = connectedGoogle.find((p) => p.label === googleAccount) ?? connectedGoogle[0]!;
-    const who = active.email ?? active.label;
-    const body =
-      `Active Google account for this chat: ${who} (profile "${active.label}", config dir ${active.configDir}). ` +
-      `When using Google Workspace, act as THIS account: pass account "${active.label}" to the google_workspace tool ` +
-      `(equivalently, set GOOGLE_WORKSPACE_CLI_CONFIG_DIR=${active.configDir}). Do not use the other connected accounts unless asked.`;
-    setPrimedContext((cur) => {
-      const cleared = cur.filter((x) => !x.label.startsWith("auto-google-account:"));
-      return [...cleared, { label: `auto-google-account: ${active.label}`, body }];
-    });
-  }, [isGoogleApp, connectedGoogle, googleAccount]);
+  // The Google account selector lives in ONE place: the multi-select account chip
+  // in the composer (see chatviews.tsx, persisted at prevail.domain.<d>.googleAccounts
+  // and threaded to the connector at send time). The older single-select dropdown
+  // + "auto-google-account:" context note were a redundant second selector and
+  // have been removed.
   // Attach / detach one secondary skill as removable context. Labelled
   // "app-skill: <name>" (distinct from the auto-attached "auto-app:" primary and
   // from the "auto:" domain-state prime), so each layer is independent.
@@ -2728,26 +2684,6 @@ export function ChatPanel({
                 >
                   <Sparkles className="h-3 w-3" /> {appAutoSkill ? "App skill on" : "App skill off"}
                 </button>
-              )}
-              {/* Google account selector: only when the Google app is open and
-                  more than one account is connected. Picks which account this
-                  chat acts as. A single account shows nothing. */}
-              {isGoogleApp && connectedGoogle.length > 1 && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted"
-                  title="Which Google account this chat acts as for Google Workspace actions."
-                >
-                  <span>Google</span>
-                  <select
-                    value={googleAccount}
-                    onChange={(e) => setGoogleAccount(e.target.value)}
-                    className="bg-transparent text-accent outline-none"
-                  >
-                    {connectedGoogle.map((p) => (
-                      <option key={p.configDir} value={p.label}>{p.email ?? p.label}</option>
-                    ))}
-                  </select>
-                </span>
               )}
               {/* Suggested app skills: each secondary skill the app ships, offered
                   as a one-click attach. Once attached it shows as a removable
