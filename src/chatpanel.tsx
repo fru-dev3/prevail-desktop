@@ -788,6 +788,21 @@ export function ChatPanel({
   // Slash autocomplete - detect `/<word>` at the caret position and
   // expose the filtered skills + a completer for the textarea below.
   const taRef = useRef<HTMLTextAreaElement>(null);
+  // Auto-grow the composer with its content, like Claude/ChatGPT: measure the
+  // rendered content height and expand up to a comfortable cap (~10 lines),
+  // after which the textarea scrolls internally. Height resets naturally when
+  // the input clears (send / escape) because the effect re-measures on every
+  // value change. Cap is fixed px (not vh) so the composer never eats the
+  // conversation on short windows.
+  const TA_MAX_PX = 240;
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto"; // shrink-to-fit first so deletions collapse
+    const next = Math.min(ta.scrollHeight, TA_MAX_PX);
+    ta.style.height = `${next}px`;
+    ta.style.overflowY = ta.scrollHeight > TA_MAX_PX ? "auto" : "hidden";
+  }, [input]);
   // B2 (Monday feedback): the `/` and `$` popovers must read the caret to know
   // what the user is typing. Reading `taRef.current.selectionStart` inside a
   // useMemo is a render-phase DOM read - for append-at-end typing the browser
