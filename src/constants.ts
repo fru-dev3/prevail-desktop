@@ -153,12 +153,12 @@ export const MODELS: Record<string, ModelPick[]> = {
     // these run the right model; bump the label when Anthropic ships a new one.
     // Claude Code exposes no machine-readable model list (verified), so this is a
     // curated list by necessity.
-    { id: "opus",            label: "Opus 4.8",  blurb: "flagship · complex tasks" },
+    { id: "opus",            label: "Opus 4.8",  blurb: "flagship · complex tasks", resolved: "claude-opus-4-8" },
     { id: "claude-opus-4-7", label: "Opus 4.7",  blurb: "previous flagship" },
     { id: "claude-opus-4-6", label: "Opus 4.6",  blurb: "legacy flagship" },
     { id: "claude-fable-5",  label: "Fable 5",   blurb: "newest · most capable" },
-    { id: "sonnet",          label: "Sonnet 5",  blurb: "balanced · efficient" },
-    { id: "haiku",           label: "Haiku 4.5", blurb: "fast + cheap" },
+    { id: "sonnet",          label: "Sonnet 5",  blurb: "balanced · efficient", resolved: "claude-sonnet-5" },
+    { id: "haiku",           label: "Haiku 4.5", blurb: "fast + cheap", resolved: "claude-haiku-4-5" },
   ],
   codex: [
     // gpt-5.5 is the ONLY model Codex accepts on a ChatGPT-login

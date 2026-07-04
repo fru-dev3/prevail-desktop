@@ -37,10 +37,50 @@ pub(crate) fn intent_append(
         obj.entry("app").or_insert_with(|| serde_json::json!("prevail-desktop"));
         obj.entry("app_version").or_insert_with(|| serde_json::json!(env!("CARGO_PKG_VERSION")));
         obj.entry("surface").or_insert_with(|| serde_json::json!("chat"));
+        // Deliberately rich: metadata is cheap now and irreplaceable later - a
+        // future, smarter model mining this ledger benefits from every axis
+        // (which OS build, which engine compiled the sidecar behavior, what
+        // schema wrote the record).
+        obj.entry("os").or_insert_with(|| serde_json::json!(os_version()));
+        obj.entry("engine_version").or_insert_with(|| serde_json::json!(engine_version()));
+        obj.entry("meta_v").or_insert_with(|| serde_json::json!(1));
     }
     let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
     engine::vault_append_line(&file, &format!("{line}\n")).map_err(|e| format!("write intent: {e}"))?;
     Ok(())
+}
+
+/// OS name + version (e.g. "macOS 26.0"), resolved once.
+fn os_version() -> String {
+    static OS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    OS.get_or_init(|| {
+        let ver = std::process::Command::new("sw_vers")
+            .arg("-productVersion")
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty());
+        match ver {
+            Some(v) => format!("macOS {v}"),
+            None => std::env::consts::OS.to_string(),
+        }
+    })
+    .clone()
+}
+
+/// The engine (sidecar) version, resolved once per app run.
+fn engine_version() -> String {
+    static V: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    V.get_or_init(|| {
+        std::process::Command::new(engine::resolve_prevail_bin())
+            .arg("--version")
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_default()
+    })
+    .clone()
 }
 
 /// This machine's hostname, resolved once. Used to stamp provenance on journal
