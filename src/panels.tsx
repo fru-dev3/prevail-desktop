@@ -7,6 +7,7 @@ import { PrevailLogo } from "./PrevailLogo";
 import { ProviderMark } from "./marks";
 import { invoke, setWebToken } from "./bridge";
 import { INTEGRATION_LABEL, PATTERN_LABEL, PATTERN_TIER, PATTERN_TINT, STATUS_TINT } from "./constants";
+import { favKeyOf, useFavorites } from "./appfavorites";
 import { formatFreshness, scoreColor, titleCase } from "./format";
 import { track } from "./telemetry";
 import { Toggle } from "./ui";
@@ -971,6 +972,43 @@ export function SurfacePanel({ vaultPath, domain, onPick, onAddTask }: { vaultPa
           </div>
         );
       })()}
+    </div>
+  );
+}
+
+// The HOME apps strip - the user's starred apps as one horizontal chip row at
+// the top of the home canvas, so home reads consistently with the in-domain
+// Apps strip (feedback: apps rendered vertically in the sidebar while domain
+// chips read horizontally). Same source as the home sidebar (favorites only),
+// same chip language as DomainAppsStrip, click opens the app. The Editor app
+// view stays vertical by design.
+export function HomeAppsStrip() {
+  const [apps, setApps] = useState<EngineApp[]>([]);
+  const favs = useFavorites();
+  useEffect(() => {
+    invoke<EngineApp[]>("engine_apps_list").then((all) => setApps(all ?? [])).catch(() => {});
+  }, []);
+  const starred = apps
+    .filter((a) => favs.has(favKeyOf(a.title || a.id)) || favs.has(favKeyOf(a.id)))
+    .sort((a, b) => a.title.localeCompare(b.title));
+  if (starred.length === 0) return null;
+  return (
+    <div className="flex w-full max-w-2xl flex-wrap items-center justify-center gap-2">
+      <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Apps</span>
+      {starred.map((a) => {
+        const tint = STATUS_TINT[a.status] ?? "#9aa0a6";
+        return (
+          <button
+            key={a.id}
+            onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: a }))}
+            title={`Open ${a.title} · ${a.status}${a.lastError ? ": " + a.lastError : ""}`}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-2 py-0.5 text-text-secondary transition-colors hover:border-accent-border hover:bg-surface-warm"
+          >
+            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: tint }} />
+            <span className="text-[11px]">{a.account?.label ? `${a.title} · ${a.account.label}` : a.title}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

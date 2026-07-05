@@ -17,7 +17,7 @@ import { domainBlurb, inheritedGoogleAccount, isLocalCli, looksLikeJudgmentCall,
 import { buildChatContext, buildIdealStatePreamble, buildOmegaPreamble, buildQuickActions, buildSkillsPreamble, curatedFor, loadPreferredSkills, maybeRedact, maybeStripSycophancy, modelsFor, savePreferredSkills } from "./helpers2";
 import { LS, PREF, getDomainToggle, getPref, incognitoActive, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 import { Markdown } from "./Markdown";
-import { ContextScoreBadge, NewSkillForm, ScoreBar, SkillsList } from "./panels";
+import { HomeAppsStrip, ContextScoreBadge, NewSkillForm, ScoreBar, SkillsList } from "./panels";
 import { InsightsPanel, UsageDashboard } from "./panels2";
 import { ContextScorePanel, DomainAppsTab, AppRowLogo } from "./panels3";
 import { domainIcon } from "./icons";
@@ -2294,6 +2294,9 @@ export function ChatPanel({
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 && !domain && domainTab === "chat" && (
           <div className="flex h-full flex-col items-center justify-center px-6 py-8">
+            {/* Starred apps as a horizontal strip at the top of home - same
+                chip language as the in-domain Apps strip, per user feedback. */}
+            <div className="mb-6"><HomeAppsStrip /></div>
             <PrevailLogo size={64} src="/logo-512.png" />
             <h2 className="mt-6 font-display text-4xl font-bold tracking-tight sm:text-5xl">
               What should we work on?
