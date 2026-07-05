@@ -28,6 +28,7 @@ jobs:
       # which failed obscurely deep in the build). Catch it here with a clear
       # message before anything else runs.
       - name: Validate release files
+        shell: bash
         run: |
           for f in package.json src-tauri/tauri.conf.json; do
             test -s "$f" || { echo "::error::$f is empty"; exit 1; }
@@ -53,6 +54,7 @@ jobs:
         with:
           bun-version: latest
       - name: Validate engine files
+        shell: bash
         run: |
           test -s engine/package.json || { echo "::error::engine/package.json is empty"; exit 1; }
           node -e "JSON.parse(require('fs').readFileSync('engine/package.json','utf8'))" \
@@ -166,6 +168,7 @@ jobs:
       # which failed obscurely deep in the build). Catch it here with a clear
       # message before anything else runs.
       - name: Validate release files
+        shell: bash
         run: |
           for f in package.json src-tauri/tauri.conf.json; do
             test -s "$f" || { echo "::error::$f is empty"; exit 1; }
@@ -189,6 +192,7 @@ jobs:
         with:
           bun-version: latest
       - name: Validate engine files
+        shell: bash
         run: |
           test -s engine/package.json || { echo "::error::engine/package.json is empty"; exit 1; }
           node -e "JSON.parse(require('fs').readFileSync('engine/package.json','utf8'))" \
