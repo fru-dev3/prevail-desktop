@@ -408,7 +408,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
       setSelected((cur) => (cur && next.some((a) => a.id === cur) ? cur : (next.find((a) => !a.gateway)?.id ?? next[0]?.id ?? null)));
       return next;
     } catch { setApps([]); return []; }
-  }, []);
+  }, [vaultPath]);
   useEffect(() => {
     void reload();
     const onSynced = () => { void reload(); };
