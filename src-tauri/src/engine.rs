@@ -1373,6 +1373,18 @@ pub fn engine_skill_archive(domain: String, skill: String, restore: Option<bool>
     run_engine_json(&["skill-usage", action, &domain, &skill, "--json"])
 }
 
+/// One-time import of the user's existing Chrome login cookies for an app's
+/// site into its dedicated Prevail browser profile (scoped to that site's
+/// hosts only; Chrome must be quit). Returns { ok, message, imported? }.
+#[tauri::command]
+pub async fn engine_app_import_login(id: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_engine_json(&["connectors", "import-login", &id, "--json"])
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Pin (or clear) the AI runtime that serves an app's chats - the routing half
 /// of the harness pass-through lanes. Empty/off clears.
 #[tauri::command]
