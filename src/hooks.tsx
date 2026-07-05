@@ -66,6 +66,20 @@ export function useAppearance() {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
+  // Profile switch: the entered profile's saved theme/palette were just written
+  // to localStorage by hydrateProfilePrefs (or cleared, for a fresh profile).
+  // Re-read them so the look follows the profile; the apply-effect below then
+  // mirrors the active profile's choice to the machine-level store.
+  useEffect(() => {
+    const reload = () => {
+      const savedMode = lsGet(LS.theme);
+      setMode(savedMode === "light" || savedMode === "dark" || savedMode === "system" ? savedMode : "dark");
+      const savedPal = lsGet(LS.palette) as Palette;
+      setPalette(PALETTES.some((p) => p.id === savedPal) ? savedPal : "prevail");
+    };
+    window.addEventListener("prevail:appearance-reload", reload);
+    return () => window.removeEventListener("prevail:appearance-reload", reload);
+  }, []);
   // Cross-device hydrate: theme + palette are persisted on the desktop (see
   // ui_settings_get), so the WebUI - and a re-installed desktop - inherit the
   // same look instead of starting from an empty browser localStorage. Runs once
