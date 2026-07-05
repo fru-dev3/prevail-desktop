@@ -715,7 +715,7 @@ export function ChatPanel({
     if (!domain) { setDomainImports([]); return; }
     let mounted = true;
     invoke<DomainImport[]>("ingestion_list_artifacts", { domain })
-      .then((rows) => { if (mounted) setDomainImports(rows); })
+      .then((rows) => { if (mounted) setDomainImports(Array.isArray(rows) ? rows : []); })
       .catch(() => { if (mounted) setDomainImports([]); });
     return () => { mounted = false; };
   }, [domain]);
@@ -785,7 +785,7 @@ export function ChatPanel({
   // domains. Refreshed when the vault changes or apps are added/removed.
   useEffect(() => {
     if (!vaultPath) { setAppsCache([]); return; }
-    const load = () => invoke<EngineApp[]>("engine_apps_list").then(setAppsCache).catch(() => setAppsCache([]));
+    const load = () => invoke<EngineApp[]>("engine_apps_list").then((v) => setAppsCache(Array.isArray(v) ? v : [])).catch(() => setAppsCache([]));
     void load();
     window.addEventListener("prevail:apps-changed", load);
     return () => window.removeEventListener("prevail:apps-changed", load);

@@ -238,7 +238,7 @@ export function IngestionSection() {
         invoke<IngestionTierStatus[]>("ingestion_status"),
         invoke<IngestionMcpServer[]>("ingestion_mcp_list"),
       ]);
-      setTiers(t);
+      setTiers(Array.isArray(t) ? t : []);
       setMcp(m);
       setErr(null);
     } catch (e) {

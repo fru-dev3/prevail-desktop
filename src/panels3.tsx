@@ -1022,7 +1022,7 @@ export function IngestionTierCard({
     (async () => {
       try {
         const ps = await invoke<CliProvider[]>("ingestion_cli_providers");
-        setCliProviders(ps);
+        setCliProviders(Array.isArray(ps) ? ps : []);
         for (const p of ps) {
           try {
             const ok = await invoke<boolean>("ingestion_cli_probe", { providerId: p.id });
