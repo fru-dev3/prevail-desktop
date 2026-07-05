@@ -1,8 +1,7 @@
 {
-  "name": "fd-apps-prevail-desktop",
-  "private": true,
+  "name": "prevail-desktop",
   "version": "0.2.156",
-  "description": "Prevail desktop — native macOS cockpit for AI council deliberation",
+  "description": "Prevail desktop \u2014 native macOS cockpit for AI council deliberation",
   "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -52,5 +51,11 @@
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
     "vitest": "^3.2.6"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fru-dev3/prevail-desktop.git"
+  },
+  "homepage": "https://github.com/fru-dev3/prevail-desktop",
+  "author": "example.com"
 }
