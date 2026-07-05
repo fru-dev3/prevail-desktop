@@ -140,6 +140,10 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
     } catch (e) { console.error("review set", e); } finally { setBusy(null); }
   };
 
+  // Cards the sensitive-egress guard held on execution: id -> honest category
+  // labels. The card stays and grows a second, explicit release button.
+  const [gwsHeld, setGwsHeld] = useState<Record<string, string[]>>({});
+
   // The visible gws queue (locally dismissed ones hidden).
   const gwsVisible = useMemo(() => gws.filter((g) => !gwsDismissed[g.id]), [gws, gwsDismissed]);
 
@@ -147,18 +151,27 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
   // bound to this exact (domain, summary), then hands it to the backend, which
   // re-verifies it before running the exact stored command. Same token spine as
   // loop approvals, so a UI bug can't drive a gws write without real approval.
-  const gwsApprove = async (g: GwsPending) => {
+  const gwsApprove = async (g: GwsPending, allowSensitive = false) => {
     setBusy(g.id); setReport(null);
     const procId = `gws-${g.id}-${Date.now()}`;
     const short = g.summary.length > 48 ? `${g.summary.slice(0, 48)}…` : g.summary;
     startProcess(procId, "loop", `${titleCase(g.domain || "google")} · Running: ${short}`, g.domain);
     try {
       const approval = await invoke<string>("loop_request_approval", { domain: g.domain, action: g.summary });
-      const res = await invoke<{ ok?: boolean; output?: string; error?: string }>("engine_gws_approve", { vault: vaultPath, id: g.id, domain: g.domain, summary: g.summary, approval });
+      const res = await invoke<{ ok?: boolean; output?: string; error?: string; held?: { categories?: string[] } }>(
+        "engine_gws_approve",
+        { vault: vaultPath, id: g.id, domain: g.domain, summary: g.summary, approval, allowSensitive },
+      );
       const text = (res?.error || res?.output || (res?.ok ? "Done." : "(no output)")).trim();
       setReport({ text: g.summary, report: text });
-      // Remove the card: it has run (or errored). Drop it from the queue locally.
-      setGws((prev) => prev.filter((x) => x.id !== g.id));
+      if (res?.held) {
+        // The sensitive-egress guard held it: the pending record was KEPT
+        // engine-side. Keep the card too and surface the explicit release.
+        setGwsHeld((m) => ({ ...m, [g.id]: res.held?.categories ?? [] }));
+      } else {
+        // Remove the card: it has run (or errored). Drop it from the queue locally.
+        setGws((prev) => prev.filter((x) => x.id !== g.id));
+      }
     } catch (e) {
       setReport({ text: g.summary, report: `Execution failed: ${e}` });
     } finally { setBusy(null); endProcess(procId); }
@@ -181,9 +194,24 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
         </div>
         <div className="text-[13px] leading-snug text-text-primary">{g.summary}</div>
         {cmd && <div className="mt-0.5 break-all font-mono text-[11px] text-text-muted">{cmd}</div>}
+        {gwsHeld[g.id] && (
+          <div className="mt-1.5 rounded-md border border-warn/40 bg-warn/5 px-2 py-1.5 text-[11px] leading-snug text-text-secondary">
+            Held by your sensitive-information guardrail: the outbound content contains {gwsHeld[g.id]!.join("; ") || "sensitive information"}. Nothing was sent. Release it only if you are sure.
+          </div>
+        )}
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
           {running && <span className="inline-flex items-center gap-1 text-[11px] text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> working…</span>}
-          {!running && (
+          {!running && gwsHeld[g.id] && (
+            <>
+              <button onClick={() => gwsApprove(g, true)} className="inline-flex items-center gap-1 rounded-md border border-warn/60 bg-warn/10 px-2.5 py-1 text-xs font-semibold text-text-primary hover:bg-warn/20">
+                <Play className="h-3 w-3" /> Approve including sensitive info
+              </button>
+              <button onClick={() => gwsDismiss(g)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:!text-err">
+                <X className="h-3 w-3" /> Dismiss
+              </button>
+            </>
+          )}
+          {!running && !gwsHeld[g.id] && (
             <>
               <button onClick={() => gwsApprove(g)} className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background hover:bg-accent-hover">
                 <Play className="h-3 w-3" /> Approve &amp; run

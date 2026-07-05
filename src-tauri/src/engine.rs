@@ -1420,6 +1420,26 @@ pub async fn email_policy_get() -> Result<serde_json::Value, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// The sensitive-information egress guardrail (Privacy > Sensitive Information).
+/// "on" (default) holds any outbound content carrying PII, money figures,
+/// health/legal/salary/strategy details, or verbatim quotes at the boundary
+/// until the user releases it. Engine-side config so every surface obeys it.
+#[tauri::command]
+pub async fn egress_guard_get() -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(|| run_engine_json(&["egress-guard", "get", "--json"]))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn egress_guard_set(mode: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_engine_json(&["egress-guard", "set", mode.as_str(), "--json"])
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn email_policy_set(policy: String) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -3397,12 +3417,19 @@ pub async fn engine_gws_approve(
     domain: String,
     summary: String,
     approval: String,
+    allow_sensitive: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     // Single authorization checkpoint: the broker verifies the approval token is
     // valid, single-use, and bound to this exact (domain, summary). Do NOT weaken.
     crate::broker::authorize_action(&domain, &summary, &approval)?;
     tauri::async_runtime::spawn_blocking(move || {
-        run_engine_json(&["--vault", &vault, "gws", "run", "--id", &id])
+        // allow_sensitive is the user's SECOND, explicit release of an action
+        // the egress guard held; it requires its own fresh approval token.
+        let mut args: Vec<&str> = vec!["--vault", &vault, "gws", "run", "--id", &id];
+        if allow_sensitive == Some(true) {
+            args.push("--allow-sensitive");
+        }
+        run_engine_json(&args)
     })
     .await
     .map_err(|e| format!("gws run task failed: {e}"))?
