@@ -80,6 +80,12 @@ pub(crate) fn provider_key_del(provider: String) -> Result<(), String> {
 // passed to webui_start. Keychain service "prevail.webui", account "password".
 #[tauri::command]
 pub(crate) fn webui_secret_set(pass: String) -> Result<(), String> {
+    // Password floor (M1): the WebUI bridge is a real remote-access credential;
+    // reject trivially guessable passwords at the setter so a weak one can't be
+    // stored in the first place.
+    if pass.chars().count() < 10 {
+        return Err("WebUI password must be at least 10 characters.".into());
+    }
     ingestion::keychain::set("prevail.webui", "password", &pass)
 }
 #[tauri::command]
