@@ -40,5 +40,31 @@ machine unless you enable an integration. Key considerations:
 - **CSP** is enabled with `default-src 'self'`, `script-src 'self'`,
   `object-src 'none'`, and `base-uri 'self'`.
 
+## Secrets and credentials
+
+Prevail's rule: credentials live in the OS keychain where possible, on as few
+disks as possible, and are never committed or synced.
+
+| Credential | Storage | At rest | Synced? |
+|---|---|---|---|
+| Provider API keys (OpenRouter, direct) | macOS Keychain `prevail.providers/*` | OS keychain | No |
+| Composio / Nango gateway token | Keychain `prevail.ingestion/composio` | OS keychain | No |
+| WebUI bridge password | Keychain `prevail.webui/password` (min 10 chars) | OS keychain | No |
+| Google OAuth tokens | external `gws` CLI keyring (`~/.config/gws*`) | gws keyring (Keychain on macOS) | No |
+| Imported Chrome cookies (browser automation) | Playwright state under the app data dir | filesystem perms only | No (excluded from vault) |
+| App API-key lane tokens | in the vault | vault encryption **when the vault is encrypted** (production default) | Yes if the vault syncs |
+| Updater signing key | `~/.prevail/updater.key`, local only | filesystem perms | No |
+
+Known trade-offs: imported browser cookies can't go in the keychain (they sit
+under the app data dir, never the vault, and Vault Lock doesn't grant the model
+access to them); a raw API key pasted into an app lane lands in the vault, so
+keep vault encryption on and prefer OAuth/gateway lanes. The telemetry keys are
+write/ingest-only client keys (not secrets) and are injected from CI, so forks
+carry none. The updater **public** key in `tauri.conf.json` is required to
+verify updates; the private key is never committed.
+
+**Adding a new secret:** route it to the OS keychain, never the vault or a
+plaintext file, and exclude it from vault sync.
+
 ## Supported versions
 The latest released version receives security fixes.
