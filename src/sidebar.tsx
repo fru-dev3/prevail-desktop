@@ -3,7 +3,7 @@
 // gateway/MCP/benchmark status strips from shared modules.
 import { Fragment, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
-import { Activity, Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Folder, Layers, Loader2, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, PowerOff, RotateCcw, Settings as SettingsIcon, Sparkles, StarOff, Sun, X } from "lucide-react";
+import { ArrowUpRight, Activity, Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Folder, Layers, Loader2, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, PowerOff, RotateCcw, Settings as SettingsIcon, Sparkles, StarOff, Sun, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { STATUS_TINT } from "./constants";
@@ -1074,7 +1074,15 @@ export function Sidebar({
                 <Plug className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
                 <span>Apps</span>
               </button>
-              {/* Add affordance: revealed on hover so the rail stays clean. */}
+              {/* Hover affordances: jump to the Apps configuration space, or add
+                  an app. Revealed on hover so the rail stays clean. */}
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+                title="Open Apps configuration"
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-text-muted opacity-0 transition hover:bg-surface-warm hover:text-accent focus:opacity-100 group-hover/h:opacity-100"
+              >
+                <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+              </button>
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
                 title="Add an app"
