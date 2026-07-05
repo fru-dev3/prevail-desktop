@@ -58,7 +58,7 @@ test("3 · Privacy page: all four controls render; the guardrail toggle drives b
 
 test("4 · Editor sections switch without crashing (tools, skills, apps)", async ({ page }) => {
   await page.getByText("What should we work on?").waitFor({ timeout: 15_000 });
-  for (const section of ["tools", "skills", "connectors"]) {
+  for (const section of ["tools", "skills", "connectors", "usage"]) {
     await page.evaluate((s) => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: s })), section);
     await page.waitForTimeout(400); // sections lazy-load; a crash throws pageerror
   }

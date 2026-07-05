@@ -779,7 +779,7 @@ export function CouncilPanel({
         appended = true;
         invoke("usage_append", {
           vault: _vaultPath,
-          record: { ts: now, day, domain: domain ?? null, thread, cli: c.cli || "unknown", model: c.model, input_tokens: null, output_tokens: null, cost_usd: null, ok: true },
+          record: { ts: now, day, domain: domain ?? null, thread, surface: "council", cli: c.cli || "unknown", model: c.model, input_tokens: null, output_tokens: null, cost_usd: null, ok: true },
         }).catch((e) => console.error("usage_append (council)", e));
       }
       if (appended) window.dispatchEvent(new CustomEvent("prevail:usage-updated"));
