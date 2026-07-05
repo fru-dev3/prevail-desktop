@@ -23,6 +23,19 @@ jobs:
       - name: Scrub gate (no personal data in demo vault)
         run: bash scripts/scrub-gate.sh
 
+      # Integrity gate: fail fast + loud if a release file is empty or invalid
+      # JSON (a version-bump race once committed 0-byte package.json/tauri.conf,
+      # which failed obscurely deep in the build). Catch it here with a clear
+      # message before anything else runs.
+      - name: Validate release files
+        run: |
+          for f in package.json src-tauri/tauri.conf.json; do
+            test -s "$f" || { echo "::error::$f is empty"; exit 1; }
+            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" \
+              || { echo "::error::$f is not valid JSON"; exit 1; }
+          done
+          echo "release files OK"
+
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -39,6 +52,11 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: latest
+      - name: Validate engine files
+        run: |
+          test -s engine/package.json || { echo "::error::engine/package.json is empty"; exit 1; }
+          node -e "JSON.parse(require('fs').readFileSync('engine/package.json','utf8'))" \
+            || { echo "::error::engine/package.json is not valid JSON"; exit 1; }
       - name: Install engine deps
         run: cd engine && bun install
 
@@ -143,6 +161,19 @@ jobs:
       - name: Scrub gate (no personal data in demo vault)
         run: bash scripts/scrub-gate.sh
 
+      # Integrity gate: fail fast + loud if a release file is empty or invalid
+      # JSON (a version-bump race once committed 0-byte package.json/tauri.conf,
+      # which failed obscurely deep in the build). Catch it here with a clear
+      # message before anything else runs.
+      - name: Validate release files
+        run: |
+          for f in package.json src-tauri/tauri.conf.json; do
+            test -s "$f" || { echo "::error::$f is empty"; exit 1; }
+            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" \
+              || { echo "::error::$f is not valid JSON"; exit 1; }
+          done
+          echo "release files OK"
+
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -157,6 +188,11 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: latest
+      - name: Validate engine files
+        run: |
+          test -s engine/package.json || { echo "::error::engine/package.json is empty"; exit 1; }
+          node -e "JSON.parse(require('fs').readFileSync('engine/package.json','utf8'))" \
+            || { echo "::error::engine/package.json is not valid JSON"; exit 1; }
       - name: Install engine deps
         run: cd engine && bun install
 
