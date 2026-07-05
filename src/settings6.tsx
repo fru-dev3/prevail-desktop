@@ -2,7 +2,7 @@
 // Council defaults, Configuration (groups the memory/tasks/ideal sub-sections),
 // and the Agents catalog (AgentCard + AgentsSection).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, FileX, FolderCheck, FolderX, Globe, ListChecks, Loader2, Lock, LockOpen, Mail, MailCheck, Scale, Search, Send, Server, ShieldCheck, ShieldOff, Sigma, Sparkles, Target, Terminal, User, Wifi, WifiOff, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Banknote, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, FileX, Fingerprint, FolderCheck, FolderX, Globe, HeartPulse, ListChecks, Loader2, Lock, LockOpen, Mail, MailCheck, Scale, Search, Send, Server, ShieldCheck, ShieldOff, Sigma, Sparkles, Target, Terminal, User, Wifi, WifiOff, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { DISCOVERED_MODELS, RUNTIME_META, VENDOR_BRAND, isHarnessRuntime } from "./constants";
@@ -202,6 +202,55 @@ function OutboundContactToggle() {
   );
 }
 
+// Sensitive Information - what CONTENT may leave, the companion dial to
+// Outbound Contact (who may be reached). Engine-enforced at the egress choke
+// points (Google write executor, browser agent typing), so chat, loops, agents
+// and the CLI all hit the same gate. On by default: outbound content carrying
+// PII, money figures, health/legal/salary/strategy details, or verbatim quotes
+// is held at the boundary until the user releases that exact action.
+function SensitiveInfoToggle() {
+  const [on, setOn] = useState(true);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    invoke<{ mode?: string }>("egress_guard_get")
+      .then((r) => { if (r?.mode === "on" || r?.mode === "off") setOn(r.mode === "on"); })
+      .catch(() => {});
+  }, []);
+  async function toggle(next: boolean) {
+    setBusy(true);
+    try {
+      await invoke("egress_guard_set", { mode: next ? "on" : "off" });
+      setOn(next);
+    } catch (e) { console.error("egress_guard_set", e); } finally { setBusy(false); }
+  }
+  const chips: StatusChip[] = [
+    { Icon: Fingerprint, label: "Identifiers", state: on ? "Held" : "May leave", good: on },
+    { Icon: Banknote, label: "Money figures", state: on ? "Held" : "May leave", good: on },
+    { Icon: HeartPulse, label: "Health", state: on ? "Held" : "May leave", good: on },
+    { Icon: Scale, label: "Legal status", state: on ? "Held" : "May leave", good: on },
+    { Icon: Target, label: "Plans, strategy", state: on ? "Held" : "May leave", good: on },
+  ];
+  return (
+    <div className={`rounded-xl border p-4 ${on ? "border-accent-border bg-accent-soft/30" : "border-border bg-surface"}`}>
+      <div className="flex items-center gap-3">
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${on ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
+          {on ? <ShieldCheck className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-text-primary">{on ? "On - sensitive details are held at the boundary" : "Off - outbound content is not scanned"}</div>
+          <div className="mt-0.5 text-xs text-text-secondary">
+            {on
+              ? "Anything leaving to another party is scanned. SSN, EIN, cards, bank details, money figures, dates of birth, health, legal status, salary, plans and verbatim quotes are held until you release that exact action. Content sent to yourself is never restricted."
+              : "Outbound email, invites, shares, and agent-typed text go out unscanned. Only the approval queue stands between your details and the outside."}
+          </div>
+        </div>
+        <Toggle on={on} disabled={busy} onChange={toggle} label="Sensitive information guardrail" />
+      </div>
+      <StatusChips items={chips} />
+    </div>
+  );
+}
+
 export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; onChange: (on: boolean) => void }) {
   type BunkerStatus = { enabled: boolean; network_blocked: boolean; web_blocked: boolean; cloud_blocked: boolean; local_available: boolean };
   const [status, setStatus] = useState<BunkerStatus | null>(null);
@@ -266,7 +315,7 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
     <>
       <SettingsHeader
         title="Privacy"
-        subtitle="Four independent controls, each answering a different question. They work in any combination."
+        subtitle="Five independent controls, each answering a different question. They work in any combination."
       />
 
       {/* ── SECTION 1 - BUNKER MODE: where your data can go ─────────────────── */}
@@ -371,6 +420,15 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
           blurb="Who Prevail may reach on your behalf. On = email sends only to your own accounts; anything to another person waits as a draft you send yourself. On by default."
         />
         <OutboundContactToggle />
+      </section>
+
+      {/* ── SECTION 5 - SENSITIVE INFORMATION: what content may leave ───────── */}
+      <section className="mt-6 border-t border-border-subtle pt-6">
+        <PrivacyGroupHead
+          title="Sensitive Information"
+          blurb="What content may leave. On = outbound messages, invites, shares and agent-typed text are scanned; PII, figures, health, legal, salary and strategy details are held until you release them. On by default."
+        />
+        <SensitiveInfoToggle />
       </section>
 
       {/* Telemetry lives under Privacy (moved from Safety). Anonymous, opt-in,
