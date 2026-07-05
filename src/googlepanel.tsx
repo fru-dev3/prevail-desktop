@@ -268,7 +268,7 @@ export function GoogleWorkspacePanel({ vaultPath, logos }: { vaultPath: string; 
       setCli(s);
       if (s.installed) {
         const ps = await invoke<Profile[]>("google_profiles");
-        setProfiles(ps);
+        setProfiles(Array.isArray(ps) ? ps : []);
         // Once at least one account is connected, make sure the agent-facing
         // connector exists (idempotent). Done automatically so there is no
         // separate "connect for the agent" step for the user to puzzle over.

@@ -41,3 +41,9 @@ launch/
 test-results/
 playwright-report/
 bun.lock
+
+# Local env overrides may hold real secrets - never commit them.
+# (The tracked .env holds only publishable client keys; see its comments.)
+.env.local
+.env.*.local
+.env.production.local

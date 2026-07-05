@@ -783,10 +783,10 @@ export function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; do
   const [tasks, setTasks] = useState<DomainTask[]>([]);
   const [adding, setAdding] = useState("");
   useEffect(() => {
-    invoke<DomainTask[]>("tasks_read", { vault: vaultPath, domain }).then(setTasks).catch(() => {});
+    invoke<DomainTask[]>("tasks_read", { vault: vaultPath, domain }).then((v) => setTasks(Array.isArray(v) ? v : [])).catch(() => {});
   }, [vaultPath, domain, nonce]);
   async function persist(next: DomainTask[]) {
-    setTasks(next);
+    setTasks(Array.isArray(next) ? next : []);
     try {
       await invoke("tasks_set", { vault: vaultPath, domain, tasks: next });
       window.dispatchEvent(new Event("prevail:tasks-changed"));
@@ -832,7 +832,7 @@ export function TasksPanel({ vaultPath, domain, nonce }: { vaultPath: string; do
       </div>
       <div className="mt-2 flex gap-2">
         <input value={adding} placeholder="add a task…  (optional due: @2026-04-15)" onChange={(e) => setAdding(e.target.value)}
-          onKeyDown={async (e) => { if (e.key === "Enter" && adding.trim()) { const txt = adding.trim(); setAdding(""); try { const next = await invoke<DomainTask[]>("tasks_add", { vault: vaultPath, domain, text: txt, source: "user" }); setTasks(next); } catch (err) { console.error("tasks_add", err); } } }}
+          onKeyDown={async (e) => { if (e.key === "Enter" && adding.trim()) { const txt = adding.trim(); setAdding(""); try { const next = await invoke<DomainTask[]>("tasks_add", { vault: vaultPath, domain, text: txt, source: "user" }); setTasks(Array.isArray(next) ? next : []); } catch (err) { console.error("tasks_add", err); } } }}
           className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm focus:border-accent-border focus:outline-none" />
       </div>
       </InsightsDisclosure>
@@ -1406,7 +1406,7 @@ export function DrawerImportsSection({
       "ingestion_list_artifacts",
       { domain },
     )
-      .then((rows) => { if (mounted) setItems(rows); })
+      .then((rows) => { if (mounted) setItems(Array.isArray(rows) ? rows : []); })
       .catch(() => { if (mounted) setItems([]); });
     return () => { mounted = false; };
   }, [domain]);
@@ -1421,7 +1421,7 @@ export function DrawerImportsSection({
         const next = await invoke<{ path: string; name: string; size: number; mtime: number }[]>(
           "ingestion_list_artifacts", { domain },
         );
-        setItems(next);
+        setItems(Array.isArray(next) ? next : []);
       }
     } catch (e) { console.error(e); }
   }

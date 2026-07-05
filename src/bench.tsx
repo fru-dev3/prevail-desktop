@@ -296,7 +296,8 @@ export function benchFreqLabel(freq: string): string {
 }
 
 export async function rerunLatestBatch(vault: string): Promise<boolean> {
-  const runs = await invoke<BenchmarkRun[]>("benchmark_runs", { vault }).catch(() => [] as BenchmarkRun[]);
+  const runsRaw = await invoke<BenchmarkRun[]>("benchmark_runs", { vault }).catch(() => [] as BenchmarkRun[]);
+  const runs = Array.isArray(runsRaw) ? runsRaw : [];
   if (runs.length === 0) return false;
   const newest = runs[0];
   // The batch = everything sharing the newest run's batch id, or (pre-batch
@@ -304,7 +305,8 @@ export async function rerunLatestBatch(vault: string): Promise<boolean> {
   const group = newest.batch_id
     ? runs.filter((r) => r.batch_id === newest.batch_id)
     : runs.filter((r) => Math.abs(r.created_ms - newest.created_ms) < 5 * 60_000);
-  const questions = await invoke<BenchQuestion[]>("benchmark_questions", { vault }).catch(() => [] as BenchQuestion[]);
+  const questionsRaw = await invoke<BenchQuestion[]>("benchmark_questions", { vault }).catch(() => [] as BenchQuestion[]);
+  const questions = Array.isArray(questionsRaw) ? questionsRaw : [];
   const jobs: BenchJob[] = [];
   let council = false;
   const seen = new Set<string>();
@@ -365,7 +367,8 @@ export async function scheduledRunPreview(vault: string): Promise<{ models: stri
     const doms = lsGet(BENCH_SCHED.scopeDomains, "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
     return { models: keys.map(modelKeyLabel), scopeLabel: domainScopeLabel(doms), council: false, empty: keys.length === 0, mode };
   }
-  const runs = await invoke<BenchmarkRun[]>("benchmark_runs", { vault }).catch(() => [] as BenchmarkRun[]);
+  const runsRaw = await invoke<BenchmarkRun[]>("benchmark_runs", { vault }).catch(() => [] as BenchmarkRun[]);
+  const runs = Array.isArray(runsRaw) ? runsRaw : [];
   if (runs.length === 0) return { models: [], scopeLabel: "", council: false, empty: true, mode };
   const newest = runs[0];
   const group = newest.batch_id
@@ -401,7 +404,8 @@ export async function buildScheduledJobs(vault: string): Promise<{ jobs: BenchJo
   if (keys.length === 0) return null;
   const domStr = mode === "custom" ? lsGet(BENCH_SCHED.scopeDomains, "") : "";
   const domSet = new Set(domStr.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
-  const questions = await invoke<BenchQuestion[]>("benchmark_questions", { vault }).catch(() => [] as BenchQuestion[]);
+  const questionsRaw = await invoke<BenchQuestion[]>("benchmark_questions", { vault }).catch(() => [] as BenchQuestion[]);
+  const questions = Array.isArray(questionsRaw) ? questionsRaw : [];
   const qids = questions.filter((q) => domSet.size === 0 || domSet.has(q.domain.toLowerCase())).map((q) => q.id).sort();
   const jobs: BenchJob[] = keys.map((k) => {
     const [cli, model] = k.split(MODEL_SEP);
@@ -434,7 +438,8 @@ export async function runBenchModels(vault: string, models: string[], domains: s
   keys = keys.filter((k) => { const cli = k.split(MODEL_SEP)[0]; return avail.has(cli) && (!isBunkerOn() || isLocalCli(cli)); });
   if (keys.length === 0) return false;
   const domSet = new Set(domains.map((s) => s.trim().toLowerCase()).filter(Boolean));
-  const questions = await invoke<BenchQuestion[]>("benchmark_questions", { vault }).catch(() => [] as BenchQuestion[]);
+  const questionsRaw = await invoke<BenchQuestion[]>("benchmark_questions", { vault }).catch(() => [] as BenchQuestion[]);
+  const questions = Array.isArray(questionsRaw) ? questionsRaw : [];
   const qids = questions.filter((q) => domSet.size === 0 || domSet.has(q.domain.toLowerCase())).map((q) => q.id).sort();
   const jobs: BenchJob[] = keys.map((k) => {
     const [cli, model] = k.split(MODEL_SEP);

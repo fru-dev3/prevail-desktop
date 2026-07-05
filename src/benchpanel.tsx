@@ -1153,7 +1153,7 @@ export function BenchRunConfig({
   useEffect(() => {
     let alive = true;
     void invoke<CliInfo[]>("detect_clis")
-      .then((list) => { if (alive) { setClis(list); autoVerifyClis(list); } })
+      .then((list) => { const safe = Array.isArray(list) ? list : []; if (alive) { setClis(safe); autoVerifyClis(safe); } })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -3263,13 +3263,13 @@ export function BenchmarkPanel({
   // in via question/matrix keys (e.g. "App Google", "Meta").
   const [apps, setApps] = useState<EngineApp[]>([]);
   const refresh = useCallback(() => {
-    invoke<BenchmarkRun[]>("benchmark_runs", { vault: vaultPath }).then(setRuns).catch((e) => setErr(String(e)));
-    invoke<MatrixRow[]>("benchmark_matrix", { vault: vaultPath }).then(setMatrix).catch(() => {});
-    invoke<BenchQuestion[]>("benchmark_questions", { vault: vaultPath }).then(setQuestions).catch(() => {});
+    invoke<BenchmarkRun[]>("benchmark_runs", { vault: vaultPath }).then((v) => setRuns(Array.isArray(v) ? v : [])).catch((e) => setErr(String(e)));
+    invoke<MatrixRow[]>("benchmark_matrix", { vault: vaultPath }).then((v) => setMatrix(Array.isArray(v) ? v : [])).catch(() => {});
+    invoke<BenchQuestion[]>("benchmark_questions", { vault: vaultPath }).then((v) => setQuestions(Array.isArray(v) ? v : [])).catch(() => {});
     invoke<Domain[]>("scan_vault", { path: vaultPath })
       .then((ds) => setVaultDomains(ds.map((d) => d.name)))
       .catch(() => {});
-    invoke<EngineApp[]>("engine_apps_list").then(setApps).catch(() => {});
+    invoke<EngineApp[]>("engine_apps_list").then((v) => setApps(Array.isArray(v) ? v : [])).catch(() => {});
   }, [vaultPath]);
   useEffect(() => { refresh(); }, [refresh]);
   // Auto-refresh: re-read runs whenever the window regains focus or the tab

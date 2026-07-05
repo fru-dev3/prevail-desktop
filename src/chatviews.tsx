@@ -894,7 +894,7 @@ export function DomainHome({
       .catch(() => { if (mounted) setCtx(null); })
       .finally(() => { if (mounted) setLoading(false); });
     invoke<string[]>("read_domain_prompts", { vault: vaultPath, domain })
-      .then((ps) => { if (mounted) setStarterPrompts(ps); })
+      .then((ps) => { if (mounted) setStarterPrompts(Array.isArray(ps) ? ps : []); })
       .catch(() => { if (mounted) setStarterPrompts([]); });
     return () => { mounted = false; };
   }, [vaultPath, domain]);

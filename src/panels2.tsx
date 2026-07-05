@@ -13,7 +13,7 @@ export function InsightsPanel({ vaultPath, domain, onSeed }: { vaultPath: string
   const [intents, setIntents] = useState<{ message?: string; cli?: string; model?: string; ts?: number }[]>([]);
   useEffect(() => {
     invoke<{ message?: string; cli?: string; model?: string; ts?: number }[]>("intents_read", { vault: vaultPath, domain, limit: 15 })
-      .then(setIntents)
+      .then((v) => setIntents(Array.isArray(v) ? v : []))
       .catch(() => setIntents([]));
   }, [vaultPath, domain, taskNonce]);
   return (

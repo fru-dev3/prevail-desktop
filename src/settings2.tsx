@@ -1004,7 +1004,7 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
     let mounted = true;
     setLoading(true);
     invoke<SkillEntry[]>("scan_skills", { vault: vaultPath })
-      .then((s) => { if (mounted) setSkills(s); })
+      .then((s) => { if (mounted) setSkills(Array.isArray(s) ? s : []); })
       .catch(() => { if (mounted) setSkills([]); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
@@ -1111,7 +1111,7 @@ export function SkillsSection({ vaultPath }: { vaultPath: string }) {
     setLoading(true);
     try {
       const s = await invoke<SkillEntry[]>("scan_skills", { vault: vaultPath });
-      setSkills(s);
+      setSkills(Array.isArray(s) ? s : []);
     } catch { /* ignore */ }
     setLoading(false);
   }
