@@ -97,7 +97,7 @@ export function SafetySection({ vaultPath }: { vaultPath: string }) {
   );
 }
 
-// Anonymous, opt-in telemetry governance. Default OFF, two independent consents,
+// Anonymous telemetry governance. Usage default ON (opt-out), crash default OFF,
 // and a fully transparent "what we collect" list + local log. See telemetry.ts
 // and docs/TELEMETRY-PLAN.md. Network sends stay inert until build-time keys exist.
 export function TelemetrySettings() {
@@ -109,12 +109,12 @@ export function TelemetrySettings() {
   return (
     <div className="mt-6 border-t border-border-subtle pt-5">
       {/* Minimal: a one-line label (the page is already "Privacy"), two toggles,
-          and the collapsed "what we collect" list. Anonymous, opt-in, off by default. */}
+          and the collapsed "what we collect" list. Anonymous, on by default, opt-out. */}
       <div className="mb-2 flex items-baseline justify-between">
         <h3 className="font-display text-sm font-semibold tracking-tight text-text-primary">Telemetry</h3>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">anonymous · opt-in · off by default</span>
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">anonymous · on by default · one-tap opt-out</span>
       </div>
-      <p className="mb-3 text-xs text-text-secondary">Never includes your prompts, vault, the names you created, or any personal data. On only if you want to help improve Prevail.</p>
+      <p className="mb-3 text-xs text-text-secondary">Never includes your prompts, vault, the names you created, or any personal data. On by default so Prevail learns what to improve; turn it off any time and it stops instantly. Bunker Mode always blocks it regardless.</p>
       <div className="mb-3 rounded-lg border border-border bg-surface px-5">
         <SettingsRowLite title="Usage analytics (anonymous)" desc="Coarse, anonymous events (app opened, which features are used, OS) via PostHog. No content, ever."
           control={<Toggle on={usage} onChange={(v) => { setUsage(v); setUsageState(v); }} />} />

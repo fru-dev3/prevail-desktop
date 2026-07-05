@@ -1,7 +1,12 @@
-// Telemetry — anonymous, opt-in, default OFF, and impossible to leak content.
+// Telemetry — anonymous, ON by default with a one-tap opt-out (Privacy page),
+// and impossible to leak content. Product decision 2026-07: collection is
+// default-on so the product actually learns from usage; the privacy promise is
+// kept structurally (hard allowlist, anonymous UUID, transparency log) rather
+// than by keeping the pipe empty. Bunker Mode overrides everything: when
+// nothing may leave the device, telemetry does not either.
 //
 // Design (see docs/TELEMETRY-PLAN.md):
-//   * Two independent consents: usage (PostHog) and crash (Sentry). Both default OFF.
+//   * Two independent consents: usage (PostHog, default ON) and crash (Sentry, default OFF).
 //   * A HARD allowlist of event names and property keys. Anything off the list is
 //     dropped before it can ever be sent — a content leak can't happen by accident.
 //   * distinct_id is a random local UUID, never email/name/path/machine.
@@ -12,7 +17,7 @@
 //     log. Both SDKs are lazy-imported on first send, so a user who never opts in
 //     pays zero bytes; PostHog/Sentry init is privacy-hardened (see each block).
 import { APP_VERSION } from "./constants";
-import { PREF, getPref, lsGet, lsSet, setPref } from "./storage";
+import { PREF, getPref, isBunkerOn, lsGet, lsSet, setPref } from "./storage";
 
 // ── Allowlist ───────────────────────────────────────────────────────────────
 // Only these event names may be sent. Add deliberately; never auto-generate.
@@ -35,13 +40,13 @@ const ALLOWED_PROPS = new Set([
 // allowlisted key can't smuggle content (e.g. feature must be a known feature).
 const ENUM_VALUES: Record<string, Set<string>> = {
   os: new Set(["mac", "win", "linux", "unknown"]),
-  feature: new Set(["chat", "council", "benchmark", "skills", "intents", "ideal_state", "apps", "memory"]),
+  feature: new Set(["chat", "council", "benchmark", "skills", "intents", "ideal_state", "apps", "memory", "loops", "tasks", "journal", "notes", "automations", "domains", "privacy", "models", "tools", "profile", "settings", "work", "home"]),
   provider: new Set(["openrouter", "anthropic", "openai", "google", "ollama", "lmstudio", "bedrock", "other"]),
   daemon: new Set(["distill", "reminders", "taskgen", "skillgen", "headless_learn"]),
 };
 
 // ── Consent ──────────────────────────────────────────────────────────────────
-export function usageOn(): boolean { return getPref(PREF.telemetryUsage, "0") === "1"; }
+export function usageOn(): boolean { return getPref(PREF.telemetryUsage, "1") === "1"; }
 export function crashOn(): boolean { return getPref(PREF.telemetryCrash, "0") === "1"; }
 export function setUsage(on: boolean) { setPref(PREF.telemetryUsage, on ? "1" : "0"); }
 export function setCrash(on: boolean) {
@@ -129,6 +134,13 @@ function ensurePosthog(): Promise<PostHogLike | null> {
         ip: false,                   // no IP collection
         property_blacklist: ["$current_url", "$pathname", "$host", "$referrer", "$referring_domain"],
       });
+      // Create the (anonymous) person profile and stamp version/os on every
+      // event, so analyses can segment by build without per-callsite plumbing.
+      // The id is the same random local UUID - never email/name/machine.
+      try {
+        (posthog as unknown as { identify: (id: string) => void }).identify(distinctId());
+        (posthog as unknown as { register: (p: Record<string, string>) => void }).register({ version: APP_VERSION, os: osFamily() });
+      } catch { /* telemetry must never break the app */ }
       _posthog = posthog as unknown as PostHogLike;
       return _posthog;
     })
@@ -214,7 +226,10 @@ export function reportError(err: unknown): void {
 export function track(event: TelemetryEvent, props?: Record<string, unknown>) {
   if (!ALLOWED_EVENTS.includes(event)) return; // unknown event → never sent
   const clean = scrub(props);
-  const willSend = usageOn() && !!POSTHOG_KEY;
+  // Bunker Mode means NOTHING leaves this device - telemetry included, no
+  // matter what the consent pref says. The local transparency log still gets
+  // the entry (marked unsent) so behavior stays inspectable.
+  const willSend = usageOn() && !!POSTHOG_KEY && !isBunkerOn();
   appendLog({ ts: Date.now(), event, props: clean, sent: willSend });
   if (!willSend) return;
   // Forward to PostHog. Lazy-inits the SDK on first send; the scrubbed `clean`

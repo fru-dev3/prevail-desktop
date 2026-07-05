@@ -20,6 +20,7 @@ import { AboutSection, GatewayLogsCard, GatewaySection } from "./settings5";
 import { IntegrationsPanel } from "./integrationspanel";
 import { PromptCapturePanel } from "./promptcapturepanel";
 import { CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
+import { track } from "./telemetry";
 import { ModelsSection } from "./settings7";
 import { AppearanceSection, WorkspaceSection } from "./settings8";
 import { BenchmarkPanel } from "./benchpanel";
@@ -55,6 +56,9 @@ export function SettingsPanel({
   // Spark) moved to Work mode, so Editor opens on a config page. A specific
   // jumpTo (e.g. "connectors") still wins.
   const [section, setSection] = useState<Section>(jumpTo?.section ? (jumpTo.section as Section) : "general");
+  // Anonymous usage signal: WHICH surface opened (a name from the telemetry
+  // enum), never what's in it. One event per section change.
+  useEffect(() => { track("feature_used", { feature: section }); }, [section]);
   // Allow callers (e.g. the Demo ribbon's "Switch to Production" link) to jump
   // straight to a section. The nonce makes repeat jumps to the same section fire.
   useEffect(() => {
