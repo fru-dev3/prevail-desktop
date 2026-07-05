@@ -49,6 +49,11 @@ export const FIXTURES: Record<string, unknown> = {
   discover_runtime_connectors: [],
   engine_list_archived: [],
   list_threads: [],
+  usage_entries: [
+    { ts: 1783200000000, day: "2026-07-05", session: "s1", domain: "career", surface: "chat", cli: "claude", model: "opus", input_tokens: 1200, output_tokens: 800, est_cost_usd: 0.12, host: "mbp" },
+    { ts: 1783120000000, day: "2026-07-04", session: "s2", domain: "wealth", surface: "council", cli: "codex", model: "gpt", input_tokens: 400, output_tokens: 600, est_cost_usd: 0.03, host: "mini" },
+    { ts: 1783040000000, day: "2026-07-03", session: "s3", domain: "career", surface: "benchmark", cli: "claude", model: "sonnet", input_tokens: 900, output_tokens: 300, est_cost_usd: 0.05, host: "mbp" },
+  ],
 };
 
 export async function mockTauri(page: Page, overrides: Record<string, unknown> = {}): Promise<void> {
