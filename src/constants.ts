@@ -219,6 +219,7 @@ export const FRAMEWORKS: Framework[] = [
   { id: "ooda", label: "OODA", blurb: "Observe → Orient → Decide → Act", instruction: "Structure your response as an OODA loop: Observe, Orient, Decide, Act. Each step labelled and one line." },
   { id: "proscons", label: "PROS/CONS", blurb: "Structured trade-off with weight", instruction: "Structure your response as a PROS/CONS analysis. Two columns. End with a one-line Weight verdict naming the winner." },
   { id: "steelman", label: "STEELMAN", blurb: "Strongest version of the other side first", instruction: "Steelman the opposing position first: give it the strongest framing you can. Then give your verdict." },
+  { id: "go-nogo", label: "GO / NO-GO", blurb: "Rigorous analysis, then one committed verdict: GO or NO-GO", instruction: "Apply the GO / NO-GO framework for a decision. Do a rigorous, honest analysis: state the decision, the key evidence for and against, the biggest risks and unknowns, and what would change the answer. Then commit to ONE verdict - either GO or NO-GO, never both, never a maybe. Open with the verdict in bold (**GO** or **NO-GO**), one line of the single most important reason, then the supporting analysis, and end with the top 2-3 conditions or next steps that follow from it." },
 ];
 
 export const LENSES: Lens[] = [
