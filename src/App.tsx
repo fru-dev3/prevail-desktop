@@ -950,7 +950,8 @@ export default function App() {
     if (!vaultPath) return;
     try {
       const list = await invoke<ThreadMeta[]>("list_threads", { vault: vaultPath, domain: threadScope || null });
-      setThreads(list);
+      // Null-tolerant: a null body from the engine must not crash the shell.
+      setThreads(Array.isArray(list) ? list : []);
     } catch (e) { console.error("list_threads", e); }
   }, [vaultPath, threadScope]);
   useEffect(() => { void refreshThreads(); }, [refreshThreads]);

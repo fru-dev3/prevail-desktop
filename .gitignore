@@ -37,3 +37,7 @@ src-tauri/binaries
 # Private planning + launch material — local only, never publish
 docs/
 launch/
+
+test-results/
+playwright-report/
+bun.lock

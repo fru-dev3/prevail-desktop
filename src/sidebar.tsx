@@ -209,7 +209,8 @@ export function Sidebar({
     if (!vaultPath) return;
     try {
       const list = await invoke<string[]>("engine_list_archived", { vault: vaultPath });
-      setArchived(list);
+      // A null (older engine, empty JSON body) must not crash the whole shell.
+      setArchived(Array.isArray(list) ? list : []);
     } catch {
       // Engine may not support archiving yet - keep the group hidden.
       setArchived([]);
