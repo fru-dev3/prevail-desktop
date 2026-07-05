@@ -359,9 +359,14 @@ export function ChatPanel({
   const [memoryMd, setMemoryMd] = useState<string>("");
   useEffect(() => {
     if (!vaultPath) { setMemoryMd(""); return; }
+    // `alive` guard: a fast domain switch can let domain A's memory resolve
+    // AFTER B is open and silently ground B's next chat turn with A's memory.
+    // Drop a stale resolution so the wrong domain's context never sticks.
+    let alive = true;
     invoke<string>("read_memory_md", { vault: vaultPath, domain: domain ?? null })
-      .then(setMemoryMd)
-      .catch(() => setMemoryMd(""));
+      .then((m) => { if (alive) setMemoryMd(typeof m === "string" ? m : ""); })
+      .catch(() => { if (alive) setMemoryMd(""); });
+    return () => { alive = false; };
   }, [vaultPath, domain, chatViewNonce]);
   // Domain context column - a persistent right column showing state.md,
   // decisions, journal, recent logs, skills. Collapsible; state persisted.

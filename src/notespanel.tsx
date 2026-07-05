@@ -15,6 +15,9 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [loaded, setLoaded] = useState(false);
+  // Real save state so the footer never claims "Saved" when the write failed
+  // (a locked vault / full disk would otherwise lose the note silently).
+  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   // Guards the autosave effect from writing the file back during the initial load.
   const hydrating = useRef(true);
 
@@ -38,7 +41,12 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
   // saveNotes does NOT broadcast, so this never loops with the listener below.
   useEffect(() => {
     if (hydrating.current || !loaded) return;
-    const id = window.setTimeout(() => { void saveNotes(vaultPath, notes).catch((e) => console.error("notes save", e)); }, 600);
+    setSaveState("saving");
+    const id = window.setTimeout(() => {
+      saveNotes(vaultPath, notes)
+        .then(() => setSaveState("saved"))
+        .catch((e) => { console.error("notes save", e); setSaveState("error"); });
+    }, 600);
     return () => window.clearTimeout(id);
   }, [notes, loaded, vaultPath]);
 
@@ -181,8 +189,12 @@ export function NotesPanel({ vaultPath }: { vaultPath: string }) {
                 placeholder="Start writing… ideas, logs, brain-dumps."
                 className="min-h-0 flex-1 resize-none bg-transparent text-[15px] leading-relaxed text-text-secondary placeholder:text-text-muted/50 focus:outline-none"
               />
-              <div className="mt-2 border-t border-border-subtle pt-2 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                Saved to vault · updated {relTime(selected.updated)}
+              <div className={`mt-2 border-t border-border-subtle pt-2 font-mono text-[10px] uppercase tracking-wider ${saveState === "error" ? "text-err" : "text-text-muted"}`}>
+                {saveState === "error"
+                  ? "Not saved — check that your vault is unlocked, then edit again to retry"
+                  : saveState === "saving"
+                    ? "Saving…"
+                    : `Saved to vault · updated ${relTime(selected.updated)}`}
               </div>
             </div>
           ) : (
