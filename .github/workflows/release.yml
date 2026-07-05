@@ -63,6 +63,15 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
+      # Desktop smoke ring (G2): the five load-bearing screens must render and
+      # their primary controls must invoke the right backend command, or the
+      # tag does not build. Runs against the real frontend with Tauri IPC mocked
+      # (e2e/tauri-mock.ts) - catches the React regressions a typecheck can't.
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Desktop smoke tests
+        run: npx playwright test
+
       - name: Build, sign & notarize
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:

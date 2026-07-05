@@ -2,7 +2,7 @@
   "name": "fd-apps-prevail-desktop",
   "private": true,
   "version": "0.2.156",
-  "description": "Prevail desktop \u2014 native macOS cockpit for AI council deliberation",
+  "description": "Prevail desktop — native macOS cockpit for AI council deliberation",
   "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -12,7 +12,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@sentry/browser": "^10.57.0",
@@ -34,6 +35,7 @@
     "simple-icons": "^16.22.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@sentry/vite-plugin": "^5.3.0",
     "@tailwindcss/postcss": "^4.2.1",
     "@tauri-apps/cli": "^2",
