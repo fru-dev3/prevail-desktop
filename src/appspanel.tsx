@@ -11,6 +11,7 @@ import { MasterDetail } from "./masterdetail";
 import { ConnectorRunPanel, type ConnectorRunMode } from "./connectorrun";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke, listen } from "./bridge";
+import { toast } from "./toast";
 import { appName, relTime, titleCase } from "./format";
 import { PREF, getPref, lsGet, lsSet } from "./storage";
 import { Toggle } from "./ui";
@@ -3670,6 +3671,19 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
                   <div className="font-mono text-[10.5px] text-text-muted">open a browser, log in once, Prevail learns the steps</div>
                 </div>
                 {!isDefault && <button onClick={() => setDefaultMethod("browser")} className="shrink-0 rounded-md border border-border px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent">Make default</button>}
+                {/* One-time cookie import from the user's REAL Chrome: the site's
+                    existing login lands in the dedicated profile, so browser runs
+                    start signed-in - no fresh-Chrome re-login, passkeys included
+                    via the session cookies. Chrome must be quit for the copy. */}
+                <button
+                  onClick={() => {
+                    void invoke<{ ok?: boolean; message?: string; error?: string }>("engine_app_import_login", { id: app.id })
+                      .then((r) => { const m = r?.message || r?.error || (r?.ok ? "Logins imported." : "Import failed."); (r?.ok ? toast.success : toast.error)(m); })
+                      .catch((e) => toast.error(`Import failed: ${String(e).slice(0, 160)}`));
+                  }}
+                  title="Copy this site's existing login from your Chrome into Prevail's browser profile (quit Chrome first)"
+                  className="shrink-0 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent"
+                >Use my Chrome logins</button>
                 {/* Set up launches the browser-learn flow. It renders in the
                     Skills tab, so navigate there and open the compose step. */}
                 <button onClick={() => { setTab("skills"); setGoalText(""); setComposing(true); }} disabled={!!learnMode} className="shrink-0 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent disabled:opacity-50">Set up</button>

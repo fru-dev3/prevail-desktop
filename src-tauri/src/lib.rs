@@ -423,6 +423,7 @@ pub fn run() {
             appcmds::attachments_index_append,
             engine::engine_attachments_caption,
             engine::engine_app_set_runtime,
+            engine::engine_app_import_login,
             engine::harness_connections_scan,
             appcmds::spark_archive_append,
             appcmds::spark_archive_read,
