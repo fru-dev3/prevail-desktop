@@ -20,6 +20,7 @@ import { AboutSection, GatewayLogsCard, GatewaySection } from "./settings5";
 import { IntegrationsPanel } from "./integrationspanel";
 import { PromptCapturePanel } from "./promptcapturepanel";
 import { CouncilSettingsSection, PrivacyConnectivitySection } from "./settings6";
+import { UsageDashboard } from "./usagedashboard";
 import { track } from "./telemetry";
 import { ModelsSection } from "./settings7";
 import { AppearanceSection, WorkspaceSection } from "./settings8";
@@ -51,7 +52,7 @@ export function SettingsPanel({
   onVaultMoved?: (path: string) => void;
   jumpTo?: { section: string; n: number } | null;
 }) {
-  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "ideal-state" | "omega" | "memory" | "intents" | "daemons" | "safety" | "autonomy" | "council" | "gateway" | "mcp" | "prompt-capture" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "activity" | "retrospect" | "loopboard" | "hooks" | "profiles" | "tools" | "ingestion";
+  type Section = "general" | "models" | "benchmark" | "privacy" | "connectors" | "ideal-state" | "omega" | "memory" | "intents" | "daemons" | "safety" | "autonomy" | "council" | "gateway" | "mcp" | "prompt-capture" | "remote" | "workspace" | "vault" | "demo" | "appearance" | "frameworks" | "skills" | "shortcuts" | "about" | "activity" | "retrospect" | "loopboard" | "hooks" | "profiles" | "tools" | "ingestion" | "usage";
   // Editor lands on General. The operational surfaces (Work board / Insights /
   // Spark) moved to Work mode, so Editor opens on a config page. A specific
   // jumpTo (e.g. "connectors") still wins.
@@ -161,6 +162,7 @@ export function SettingsPanel({
               lives inside Routines as a peer collapsible group (in DaemonsSection),
               not a divider-separated section. */}
           {section === "daemons" && <DaemonsSection vaultPath={vaultPath} />}
+          {section === "usage" && <UsageDashboard vaultPath={vaultPath} />}
           {section === "activity" && <SystemActivity vaultPath={vaultPath} />}
           {section === "retrospect" && <RetrospectPanel vaultPath={vaultPath} />}
           {section === "tools" && <ToolsPanel />}

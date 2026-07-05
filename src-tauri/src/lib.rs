@@ -392,6 +392,7 @@ pub fn run() {
             benchmark::benchmark_run_detail,
             usage::usage_append,
             usage::usage_summary,
+            usage::usage_entries,
             usage::usage_summary_domain,
             usage::engine_budget_status,
             intents::intent_append,

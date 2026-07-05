@@ -25,6 +25,8 @@ pub(crate) struct UsageRecord {
     pub thread: Option<String>,
     pub cli: String,
     #[serde(default)]
+    pub surface: Option<String>,
+    #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
     pub input_tokens: Option<u64>,
@@ -42,7 +44,7 @@ pub(crate) fn usage_record_payload(r: &UsageRecord) -> serde_json::Value {
     serde_json::json!({
         "session": r.thread.clone().unwrap_or_else(|| "desktop".into()),
         "domain": r.domain,
-        "surface": "chat",
+        "surface": r.surface.clone().unwrap_or_else(|| "chat".into()),
         "cli": r.cli,
         "model": r.model,
         "inputTokens": r.input_tokens.unwrap_or(0),
@@ -137,6 +139,15 @@ fn usage_summary_inner(vault: &str, domain: Option<&str>) -> Result<UsageSummary
     let eng: EngSummary =
         serde_json::from_value(v).map_err(|e| format!("parse usage summary: {e}"))?;
     Ok(map_eng_summary(eng))
+}
+
+/// Raw usage entries (bounded personal volume) so the desktop can build a rich
+/// multi-dimension dashboard client-side. Returns the engine's `usage entries`
+/// JSON verbatim.
+#[tauri::command]
+pub(crate) fn usage_entries(vault: String) -> Result<serde_json::Value, String> {
+    let out = engine::run_engine_json(&["--vault", &vault, "usage", "entries", "--json"])?;
+    Ok(out)
 }
 
 #[tauri::command]
