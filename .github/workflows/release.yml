@@ -108,7 +108,9 @@ jobs:
           releaseName: "Prevail ${{ github.ref_name }}"
           releaseBody: "See CHANGELOG.md for details."
           releaseDraft: false
-          prerelease: false
+          # Release ring: a fresh tag is a PRERELEASE - the auto-updater's
+          # 'latest' feed ignores it until `promote` flips it. Soak first.
+          prerelease: true
 
       # The README badge and prevail-web download links point at the
       # version-independent releases/latest/download/Prevail-mac-arm64.dmg,
@@ -195,7 +197,9 @@ jobs:
           releaseName: "Prevail ${{ github.ref_name }}"
           releaseBody: "See CHANGELOG.md for details."
           releaseDraft: false
-          prerelease: false
+          # Release ring: a fresh tag is a PRERELEASE - the auto-updater's
+          # 'latest' feed ignores it until `promote` flips it. Soak first.
+          prerelease: true
 
       # Stable-name alias so download links can point at
       # releases/latest/download/Prevail-windows-x64-setup.exe.
