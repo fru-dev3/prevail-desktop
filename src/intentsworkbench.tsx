@@ -5,7 +5,7 @@
 // the LLM distiller above it stays the semantic layer.
 import { useMemo, useState } from "react";
 import { invoke } from "./bridge";
-import { Pin, PinOff, Repeat2, Copy, Check, ListPlus, Search, Layers3, Clock } from "lucide-react";
+import { Pin, PinOff, Repeat2, Copy, Check, ListPlus, Search, Layers3, Clock, Boxes, ChevronRight } from "lucide-react";
 
 export type IntentRow = {
   message?: string; prompt?: string; cli?: string; model?: string; model_id?: string;
@@ -33,7 +33,8 @@ const RANGES = [
 const PIN_KEY = "prevail.intents.pinned";
 
 export function IntentsWorkbench({ vaultPath, intents }: { vaultPath: string; intents: IntentRow[] }) {
-  const [view, setView] = useState<"recurring" | "timeline">("recurring");
+  // Zoom ladder, high -> low: domains (aims) > recurring (themes) > timeline (all).
+  const [view, setView] = useState<"domains" | "recurring" | "timeline">("domains");
   const [q, setQ] = useState("");
   const [domain, setDomain] = useState("all");
   const [surface, setSurface] = useState("all");
@@ -82,6 +83,28 @@ export function IntentsWorkbench({ vaultPath, intents }: { vaultPath: string; in
     }
     return [...m.values()].filter((e) => e.count > 1).sort((a, b) => b.count - a.count || b.last - a.last);
   }, [filtered]);
+
+  // Highest level: roll everything up to domains (aims). The fewest rows - one
+  // per domain - with how many questions and recurring themes nest under it, so
+  // you can zoom out past individual intents. Drill down to see them.
+  const domainRollup = useMemo(() => {
+    const m = new Map<string, { domain: string; total: number; last: number; clusters: Map<string, number>; surfaces: Set<string> }>();
+    for (const i of filtered) {
+      const d = i.domain || "general";
+      const e = m.get(d) ?? { domain: d, total: 0, last: 0, clusters: new Map<string, number>(), surfaces: new Set<string>() };
+      e.total++; e.last = Math.max(e.last, i.ts ?? 0); e.surfaces.add((i.surface || "other").toLowerCase());
+      const msg = String(i.message ?? "").trim();
+      if (msg) { const k = normKey(msg); e.clusters.set(k, (e.clusters.get(k) ?? 0) + 1); }
+      m.set(d, e);
+    }
+    return [...m.values()].map((e) => ({
+      domain: e.domain, total: e.total, last: e.last, surfaces: e.surfaces,
+      recurringCount: [...e.clusters.values()].filter((c) => c > 1).length,
+      top: [...e.clusters.entries()].filter(([, c]) => c > 1).sort((a, b) => b[1] - a[1]).slice(0, 3),
+    })).sort((a, b) => b.total - a.total);
+  }, [filtered]);
+
+  const drillTo = (dom: string) => { setDomain(dom); setView("recurring"); };
 
   // Timeline groups.
   const groups = useMemo(() => {
@@ -167,11 +190,13 @@ export function IntentsWorkbench({ vaultPath, intents }: { vaultPath: string; in
         </div>
       )}
 
-      {/* View toggle */}
+      {/* Zoom ladder: highest (fewest, coarsest) -> lowest (every question). */}
       <div className="flex items-center gap-2">
+        <span className="hidden font-mono text-[10px] uppercase tracking-wide text-text-muted sm:inline">zoom</span>
         <div className="inline-flex overflow-hidden rounded-lg border border-border">
-          <button onClick={() => setView("recurring")} className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${view === "recurring" ? "bg-accent text-background" : "bg-surface text-text-secondary hover:bg-surface-strong"}`}><Repeat2 className="h-3.5 w-3.5" /> Recurring</button>
-          <button onClick={() => setView("timeline")} className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${view === "timeline" ? "bg-accent text-background" : "bg-surface text-text-secondary hover:bg-surface-strong"}`}><Clock className="h-3.5 w-3.5" /> Timeline</button>
+          <button onClick={() => setView("domains")} title="Highest level: roll up to domains" className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${view === "domains" ? "bg-accent text-background" : "bg-surface text-text-secondary hover:bg-surface-strong"}`}><Boxes className="h-3.5 w-3.5" /> Domains</button>
+          <button onClick={() => setView("recurring")} title="Mid level: recurring themes" className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${view === "recurring" ? "bg-accent text-background" : "bg-surface text-text-secondary hover:bg-surface-strong"}`}><Repeat2 className="h-3.5 w-3.5" /> Recurring</button>
+          <button onClick={() => setView("timeline")} title="Lowest level: every question" className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${view === "timeline" ? "bg-accent text-background" : "bg-surface text-text-secondary hover:bg-surface-strong"}`}><Clock className="h-3.5 w-3.5" /> All</button>
         </div>
         {view === "timeline" && (
           <div className="ml-auto flex items-center gap-1.5 text-[11px] text-text-muted">
@@ -182,6 +207,34 @@ export function IntentsWorkbench({ vaultPath, intents }: { vaultPath: string; in
           </div>
         )}
       </div>
+
+      {/* DOMAINS (highest) */}
+      {view === "domains" && (
+        domainRollup.length === 0 ? <Empty text={intents.length ? "Nothing matches the current filters." : "No intents captured yet."} /> : (
+          <div className="flex flex-col gap-2">
+            <p className="text-[11px] text-text-muted">Every question rolled up to its life domain - the highest level. Click a domain to zoom in on its recurring themes.</p>
+            {domainRollup.map((d) => (
+              <button key={d.domain} onClick={() => drillTo(d.domain)} className="group rounded-xl border border-border bg-surface p-3 text-left hover:border-accent-border">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Boxes className="h-4 w-4" /></span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-display text-base font-semibold tracking-tight text-text-primary">{titleCase(d.domain)}</span>
+                      <span className="font-mono text-[11px] tabular-nums text-text-muted">{d.total} question{d.total === 1 ? "" : "s"}{d.recurringCount ? ` · ${d.recurringCount} recurring` : ""}</span>
+                    </div>
+                    {d.top.length > 0 && (
+                      <div className="mt-1 truncate text-[12px] text-text-secondary">
+                        {d.top.map(([k, c], i) => <span key={k}>{i > 0 ? " · " : ""}<span className="font-mono text-[10px] text-accent">{c}×</span> {k}</span>)}
+                      </div>
+                    )}
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-text-muted group-hover:text-accent" />
+                </div>
+              </button>
+            ))}
+          </div>
+        )
+      )}
 
       {/* RECURRING */}
       {view === "recurring" && (
