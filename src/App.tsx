@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Component, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke, listen, isBrowser, type UnlistenFn } from "./bridge";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -196,6 +196,29 @@ function PanelLoading() {
       <span className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-accent" aria-label="Loading" />
     </div>
   );
+}
+
+// Per-panel error boundary: a lazy chunk that fails to load (a stale chunk after
+// the app auto-updated while open, or a transient read) throws inside <Suspense>,
+// which does NOT catch load errors - so without this the throw bubbles to the top
+// boundary and drops the WHOLE app to the fatal screen. Here it degrades just this
+// one panel with a "Reload this section" reset; a resetKey change auto-clears it.
+class PanelBoundary extends Component<{ resetKey: unknown; children: ReactNode }, { err: unknown }> {
+  state = { err: null as unknown };
+  static getDerivedStateFromError(err: unknown) { return { err }; }
+  componentDidUpdate(prev: { resetKey: unknown }) {
+    if (prev.resetKey !== this.props.resetKey && this.state.err) this.setState({ err: null });
+  }
+  render() {
+    if (!this.state.err) return this.props.children;
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="text-sm font-medium text-text-primary">This section didn't load</div>
+        <div className="max-w-sm text-xs text-text-muted">The rest of Prevail is fine and your vault is safe. This can happen if the app updated while it was open.</div>
+        <button onClick={() => this.setState({ err: null })} className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text-primary hover:bg-surface-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">Reload this section</button>
+      </div>
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1519,6 +1542,7 @@ export default function App() {
   // shell + sidebar stay mounted and only the CENTER region swaps by tab.
   const isMainMode = tab !== "settings" && tab !== "work";
   const editorCenter = (
+    <PanelBoundary resetKey={tab}>
     <Suspense fallback={<PanelLoading />}>
       <SettingsPanel
         appearance={appearance}
@@ -1546,11 +1570,14 @@ export default function App() {
         }}
       />
     </Suspense>
+    </PanelBoundary>
   );
   const workCenter = (
+    <PanelBoundary resetKey={tab}>
     <Suspense fallback={<PanelLoading />}>
       <WorkPanel vaultPath={vaultPath} clis={clis} jumpTo={workJump} />
     </Suspense>
+    </PanelBoundary>
   );
 
   return (
@@ -1850,6 +1877,7 @@ export default function App() {
             />
           )}
           <div className="min-h-0 flex-1 overflow-y-auto">
+            <PanelBoundary resetKey={tab}>
             <Suspense fallback={<PanelLoading />}>
             {tab === "chat" && onApp && selectedApp && appTab !== "chat" ? (
               // Unified canonical app-detail surface, the SAME component the Apps
@@ -1953,6 +1981,7 @@ export default function App() {
               </div>
             )}
             </Suspense>
+            </PanelBoundary>
           </div>
         </main>
         </>)}
