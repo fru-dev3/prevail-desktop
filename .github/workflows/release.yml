@@ -82,6 +82,12 @@ jobs:
           # the Windows job). When unset, the Vite plugin is fully disabled and the
           # build is unchanged. Org/project are hard-coded in vite.config.ts.
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          # Telemetry client keys (write/ingest-only; safe to embed). Injected
+          # from secrets so the tracked repo carries no key and forks don't
+          # phone home. Unset -> telemetry SDK stays inert (module is no-op).
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           # --- Developer ID signing + notarization ---
           # APPLE_CERTIFICATE is a base64 legacy-format p12 holding only the
           # "Developer ID Application" identity plus the Apple G2 intermediate;
@@ -174,6 +180,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PREVAIL_CLI_DIR: ${{ github.workspace }}/engine
+          # Telemetry client keys (injected from secrets; forks carry none).
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           # Sign the updater artifact so the in-app auto-updater accepts Windows
           # builds. (App-level Authenticode signing needs a Windows cert we don't
           # have yet; until then the installer is unsigned and SmartScreen warns.)
