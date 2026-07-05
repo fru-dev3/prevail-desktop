@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Prevail",
-  "version": "0.2.160",
+  "version": "0.2.161",
   "identifier": "sh.prevail.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -34,7 +34,7 @@
       "endpoints": [
         "https://github.com/fru-dev3/prevail-desktop/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwQkJGNTZCOEIzMEMxMDUKUldRRndUQ0xhL1c3TUdRV0VqWldQYjBwTDdMeDlLM1cxdzJVcjlzZmxSZi9PclJRYWN4M3BmOWUK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERBRTIyRTJENzNEM0MyRkIKUldUN3d0TnpMUzdpMm51aTUwV3Y3d0NaN2owSnhrLzdtS2dzUm8weURrUHAwRWN1TnR1MGNndnYK"
     },
     "deep-link": {
       "desktop": {
