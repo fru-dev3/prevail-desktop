@@ -15,6 +15,13 @@ test("1 · home renders: headline, composer, trust ribbon with the guardrail seg
   await expect(page.getByText("What should we work on?")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/Guardrail on/i)).toBeVisible();
   await expect(page.getByText(/Vault locked/i)).toBeVisible();
+  // Self-hosted fonts must actually load (no runtime Google fetch, no silent
+  // fallback). Confirm the bundled Inter face is available.
+  const interLoaded = await page.evaluate(() => (document as unknown as { fonts: { check: (f: string) => boolean } }).fonts.check("16px Inter"));
+  expect(interLoaded).toBe(true);
+  // And nothing tried to reach Google Fonts.
+  const gf = await page.evaluate(() => performance.getEntriesByType("resource").map((r) => (r as PerformanceResourceTiming).name).filter((n) => n.includes("fonts.g")));
+  expect(gf).toEqual([]);
 });
 
 test("2 · Needs You shows both approval queues; approving a connector act uses the token spine", async ({ page }) => {
