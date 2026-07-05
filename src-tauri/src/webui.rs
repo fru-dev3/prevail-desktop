@@ -17,7 +17,7 @@ use std::io::Read;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -189,10 +189,14 @@ impl WebuiState {
         let next_id = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).next_id.clone() };
         let pending = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).pending.clone() };
         let sse = { self.inner.lock().unwrap_or_else(|e| e.into_inner()).sse.clone() };
+        // Failed-login throttle (M1): count + window-start, shared across
+        // requests. Blocks brute force even if a DNS-rebind gets same-origin.
+        let login_fail: Arc<Mutex<(u32, Instant)>> = Arc::new(Mutex::new((0, Instant::now())));
+        let bound_port = port;
 
         std::thread::spawn(move || {
             for req in server.incoming_requests() {
-                handle(&app, req, &token, &user, &pass, &next_id, &pending, &sse);
+                handle(&app, req, &token, &user, &pass, &next_id, &pending, &sse, &login_fail, bound_port);
             }
         });
         Ok(())
@@ -209,10 +213,35 @@ fn handle(
     next_id: &Arc<AtomicU64>,
     pending: &Arc<Mutex<HashMap<u64, Sender<InvokeOut>>>>,
     sse: &Arc<Mutex<Vec<Sender<String>>>>,
+    login_fail: &Arc<Mutex<(u32, Instant)>>,
+    bound_port: u16,
 ) {
     let method = req.method().clone();
     let url = req.url().to_string();
     let path = url.split('?').next().unwrap_or("/").to_string();
+
+    // DNS-rebinding defense (M1): the bridge is loopback-only, but a webpage
+    // the user visits can rebind its OWN hostname to 127.0.0.1:<port> and
+    // become same-origin. Reject any request whose Host header is not literally
+    // localhost/127.0.0.1 on our port, so a rebound attacker hostname can't
+    // drive the API even though the socket is reachable.
+    {
+        let host = req.headers().iter()
+            .find(|h| h.field.equiv("Host"))
+            .map(|h| h.value.as_str().to_string())
+            .unwrap_or_default();
+        let hostname = host.split(':').next().unwrap_or("").to_ascii_lowercase();
+        let ok_host = hostname == "127.0.0.1" || hostname == "localhost" || hostname == "[::1]" || hostname == "::1";
+        // If a port is present it must match ours (defense in depth).
+        let ok_port = match host.rsplit(':').next().and_then(|p| p.parse::<u16>().ok()) {
+            Some(p) => p == bound_port,
+            None => true,
+        };
+        if !ok_host || !ok_port {
+            let _ = req.respond(json_response(403, &serde_json::json!({ "error": "forbidden host" })));
+            return;
+        }
+    }
 
     let authed = || -> bool {
         // Header bearer OR ?token= query (for EventSource which can't set headers).
@@ -225,12 +254,27 @@ fn handle(
 
     // ── Login ──
     if path == "/api/login" && method == tiny_http::Method::Post {
+        // Exponential-ish lockout (M1): after 5 failures in a 5-minute window,
+        // reject further attempts until the window rolls. Stops offline-speed
+        // password guessing against the loopback bridge.
+        {
+            let mut g = login_fail.lock().unwrap_or_else(|e| e.into_inner());
+            if g.1.elapsed() > Duration::from_secs(300) { *g = (0, Instant::now()); }
+            if g.0 >= 5 {
+                let _ = req.respond(json_response(429, &serde_json::json!({ "error": "too many attempts, wait a few minutes" })));
+                return;
+            }
+        }
         let mut body = String::new();
         let _ = req.as_reader().read_to_string(&mut body);
         let creds: serde_json::Value = serde_json::from_str(&body).unwrap_or(serde_json::json!({}));
         // Constant-time on both fields so login can't be probed via timing.
         let ok = ct_eq(creds.get("user").and_then(|v| v.as_str()).unwrap_or(""), user)
             && ct_eq(creds.get("pass").and_then(|v| v.as_str()).unwrap_or(""), pass);
+        {
+            let mut g = login_fail.lock().unwrap_or_else(|e| e.into_inner());
+            if ok { *g = (0, Instant::now()); } else { g.0 += 1; }
+        }
         let (code, payload) = if ok {
             (200, serde_json::json!({ "token": token }))
         } else {
