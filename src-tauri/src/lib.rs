@@ -425,6 +425,8 @@ pub fn run() {
             engine::engine_app_set_runtime,
             engine::engine_app_import_login,
             engine::harness_connections_scan,
+            engine::email_policy_get,
+            engine::email_policy_set,
             appcmds::spark_archive_append,
             appcmds::spark_archive_read,
             appcmds::app_diagnostics,

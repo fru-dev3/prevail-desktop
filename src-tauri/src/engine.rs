@@ -1410,6 +1410,25 @@ pub async fn harness_connections_scan(app: Option<String>) -> Result<serde_json:
     .map_err(|e| e.to_string())?
 }
 
+/// The global outbound-email guardrail (Privacy > Outbound contact).
+/// Values: "self-only" | "draft-others" | "allow". Stored engine-side in
+/// ~/.prevail/config.json so EVERY sender (loops, agents, chat) obeys it.
+#[tauri::command]
+pub async fn email_policy_get() -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(|| run_engine_json(&["email-policy", "get", "--json"]))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn email_policy_set(policy: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_engine_json(&["email-policy", "set", policy.as_str(), "--json"])
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Kick one bounded pass of the attachment captioner (Haiku looks at each new
 /// pasted image once, captions it in the index, and renames it semantically).
 /// Fire-and-forget from the send path - a captioning hiccup never disturbs chat.
