@@ -477,13 +477,27 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
   // only. Sourced from the CLI (prevail role) via a Tauri command, exactly like
   // the other bar indicators pull their state from the backend. Defaults to hub.
   const [machineRole, setMachineRole] = useState<"hub" | "client">("hub");
+  // Outbound Guardrail (Privacy > Outbound Guardrail): ONE flag mirrored from
+  // the engine - on means email to others only drafts and sensitive details are
+  // held at the boundary. Defaults ON (the locked-down default) until the
+  // backend says otherwise.
+  const [guardrail, setGuardrail] = useState(true);
   useEffect(() => {
     const pull = () => { void invoke<{ enabled: boolean }>("vault_lock_status").then((s) => setVaultLocked(s?.enabled !== false)).catch(() => {}); };
+    const pullGuardrail = () => {
+      void Promise.all([
+        invoke<{ policy?: string }>("email_policy_get").catch(() => null),
+        invoke<{ mode?: string }>("egress_guard_get").catch(() => null),
+      ]).then(([p, g]) => { if (p || g) setGuardrail(p?.policy !== "allow" && g?.mode !== "off"); });
+    };
     const syncIncognito = () => setIncognito(getPref(PREF.incognito, "0") === "1");
     const pullRole = () => { void invoke<string>("machine_role_get").then((r) => setMachineRole(r === "client" ? "client" : "hub")).catch(() => {}); };
     pull();
     syncIncognito();
     pullRole();
+    pullGuardrail();
+    window.addEventListener("prevail:guardrail-changed", pullGuardrail);
+    window.addEventListener("focus", pullGuardrail);
     window.addEventListener("prevail:vault-lock-changed", pull);
     window.addEventListener("prevail:incognito-changed", syncIncognito);
     window.addEventListener("prevail:role-changed", pullRole);
@@ -491,6 +505,8 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
     window.addEventListener("focus", syncIncognito);
     window.addEventListener("focus", pullRole);
     return () => {
+      window.removeEventListener("prevail:guardrail-changed", pullGuardrail);
+      window.removeEventListener("focus", pullGuardrail);
       window.removeEventListener("prevail:vault-lock-changed", pull);
       window.removeEventListener("prevail:incognito-changed", syncIncognito);
       window.removeEventListener("prevail:role-changed", pullRole);
@@ -548,7 +564,18 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
           ? "Vault Locked: the assistant only reads and writes inside your vault folder."
           : "Vault Unlocked: the assistant may reach files outside your vault folder."}
       />
-      {/* 3. Incognito - only present when the global master is on. */}
+      {divider}
+      {/* 3. Outbound Guardrail - can anything reach another party without you? */}
+      <Seg
+        Icon={guardrail ? ShieldCheck : Shield}
+        label={guardrail ? "Guardrail on" : "Guardrail off"}
+        on={guardrail}
+        onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "privacy" }))}
+        tip={guardrail
+          ? "Outbound Guardrail ON: email to anyone but you only drafts, and sensitive details (PII, figures, health, legal, salary, plans) are held at the boundary until you release them."
+          : "Outbound Guardrail OFF: approved sends go out exactly as addressed, unscanned."}
+      />
+      {/* 4. Incognito - only present when the global master is on. */}
       {incognito && (
         <>
           {divider}
