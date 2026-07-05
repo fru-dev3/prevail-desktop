@@ -4,7 +4,7 @@
 // chart library: SVG for the time series, CSS grid for the heatmap + cross-tab.
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { invoke } from "./bridge";
-import { BarChart3, Filter, X } from "lucide-react";
+import { BarChart3, Filter, Search, X } from "lucide-react";
 
 type Entry = {
   ts: number; day: string; session: string; domain: string | null;
@@ -46,6 +46,7 @@ export function UsageDashboard({ vaultPath }: { vaultPath: string }) {
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState("30d");
+  const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<Partial<Record<DimId, Set<string>>>>({});
   const [groupBy, setGroupBy] = useState<DimId>("model");
   const [metric, setMetric] = useState<"cost" | "tokens" | "turns">("cost");
@@ -67,15 +68,19 @@ export function UsageDashboard({ vaultPath }: { vaultPath: string }) {
     if (!entries) return [];
     const days = RANGES.find((r) => r.id === range)?.days ?? null;
     const cutoff = days ? Date.now() - days * 86400_000 : 0;
+    const q = query.trim().toLowerCase();
     return entries.filter((e) => {
       if (e.ts < cutoff) return false;
       for (const d of DIMS) {
         const set = filters[d.id];
         if (set && set.size && !set.has(d.get(e))) return false;
       }
+      // Free-text search: match the query against ANY dimension value
+      // (model, domain, activity, machine, runtime). Empty query = no-op.
+      if (q && !DIMS.some((d) => d.get(e).toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [entries, range, filters]);
+  }, [entries, range, filters, query]);
 
   const metricOf = (e: Entry) => metric === "cost" ? e.est_cost_usd : metric === "tokens" ? e.input_tokens + e.output_tokens : 1;
 
@@ -161,6 +166,20 @@ export function UsageDashboard({ vaultPath }: { vaultPath: string }) {
           <h2 className="font-display text-2xl font-bold tracking-tight">Usage</h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search model, domain, activity, machine…"
+              className="w-56 rounded-lg border border-border bg-surface py-1.5 pl-8 pr-7 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-border focus:outline-none"
+            />
+            {query && (
+              <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-accent" aria-label="clear search">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           <div className="inline-flex overflow-hidden rounded-lg border border-border">
             {(["cost", "tokens", "turns"] as const).map((m) => (
               <button key={m} onClick={() => setMetric(m)}
@@ -183,6 +202,11 @@ export function UsageDashboard({ vaultPath }: { vaultPath: string }) {
       {empty ? (
         <div className="rounded-xl border border-dashed border-border-subtle px-6 py-16 text-center text-sm text-text-muted">
           No usage recorded yet. Run a chat, council, or benchmark and it will show up here.
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border-subtle px-6 py-16 text-center text-sm text-text-muted">
+          Nothing matches the current search, filters, or time range.
+          <button onClick={() => { setQuery(""); setFilters({}); setRange("all"); }} className="ml-1 underline underline-offset-2 hover:text-accent">reset</button>
         </div>
       ) : (
         <>
