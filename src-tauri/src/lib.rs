@@ -427,6 +427,8 @@ pub fn run() {
             engine::harness_connections_scan,
             engine::email_policy_get,
             engine::email_policy_set,
+            engine::egress_guard_get,
+            engine::egress_guard_set,
             appcmds::spark_archive_append,
             appcmds::spark_archive_read,
             appcmds::app_diagnostics,
