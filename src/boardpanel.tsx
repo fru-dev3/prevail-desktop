@@ -497,8 +497,8 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
               onKeyDown={(e) => { if (e.key === "Enter") saveEdit(t); if (e.key === "Escape") setEditId(null); }}
               className="min-w-0 flex-1 rounded border border-accent-border bg-background px-1 py-0.5 text-[13px] text-text-primary focus:outline-none" />
           ) : (
-            <span onClick={() => t.id && setOpenId(t.id)} title="Open task"
-              className="min-w-0 flex-1 cursor-pointer text-[13px] leading-snug text-text-primary hover:text-accent">{t.text}</span>
+            <button type="button" onClick={() => t.id && setOpenId(t.id)} title="Open task"
+              className="min-w-0 flex-1 cursor-pointer bg-transparent text-left text-[13px] leading-snug text-text-primary hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">{t.text}</button>
           )}
           <button onClick={() => cyclePriority(t)} title={`Priority: ${t.priority || "normal"} - click to change`} disabled={busy === `pr:${t.id}`}
             className={`shrink-0 transition-colors ${t.priority === "critical" ? "text-err" : t.priority === "high" ? "text-warn" : "text-text-muted/30 hover:text-text-muted"}`}>
@@ -550,8 +550,8 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
             onKeyDown={(e) => { if (e.key === "Enter") saveEdit(t); if (e.key === "Escape") setEditId(null); }}
             className="min-w-0 flex-1 rounded border border-accent-border bg-background px-1.5 py-0.5 text-[13px] text-text-primary focus:outline-none" />
         ) : (
-          <span onClick={() => t.id && setOpenId(t.id)} title="Open task"
-            className={`min-w-0 flex-1 cursor-pointer truncate text-[13px] hover:text-accent ${t.status === "done" ? "text-text-muted line-through" : "text-text-primary"}`}>{t.text}</span>
+          <button type="button" onClick={() => t.id && setOpenId(t.id)} title="Open task"
+            className={`min-w-0 flex-1 cursor-pointer truncate bg-transparent text-left text-[13px] hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${t.status === "done" ? "text-text-muted line-through" : "text-text-primary"}`}>{t.text}</button>
         )}
         <span className="hidden shrink-0 rounded-full bg-surface-warm px-2 py-0.5 font-mono text-[10px] text-text-muted sm:inline">{titleCase(t.domain)}</span>
         {blocked && <span className="shrink-0 font-mono text-[10px] text-warn">⏸ decision</span>}
@@ -821,8 +821,8 @@ export function BoardPanel({ vaultPath, initialDomain, clis }: { vaultPath: stri
           </div>
           {iceboxed.map((t) => (
             <div key={`ice:${t.domain}:${t.id ?? t.text}`} className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface px-3 py-2">
-              <span onClick={() => t.id && setOpenId(t.id)} title="Open task"
-                className="min-w-0 flex-1 cursor-pointer truncate text-[13px] text-text-secondary hover:text-accent">{t.text}</span>
+              <button type="button" onClick={() => t.id && setOpenId(t.id)} title="Open task"
+                className="min-w-0 flex-1 cursor-pointer truncate bg-transparent text-left text-[13px] text-text-secondary hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">{t.text}</button>
               <span className="shrink-0 rounded-full bg-surface-warm px-1.5 py-px font-mono text-[10px] text-text-muted">{titleCase(t.domain)}</span>
               <select value={t.status} onChange={(e) => setStatus(t, e.target.value)} disabled={busy === `s:${t.id}`}
                 className="shrink-0 rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-text-secondary focus:border-accent-border focus:outline-none">
