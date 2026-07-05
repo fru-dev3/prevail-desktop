@@ -101,7 +101,8 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
     if (!vaultPath) return;
     setLoading(true);
     try {
-      const ds = await invoke<Domain[]>("scan_vault", { path: vaultPath }).catch(() => [] as Domain[]);
+      const dsRaw = await invoke<Domain[]>("scan_vault", { path: vaultPath }).catch(() => [] as Domain[]);
+      const ds = Array.isArray(dsRaw) ? dsRaw : [];
       const real = ds.filter((d) => !d.name.startsWith("_"));
       setDomains(real);
       const out: CalEvent[] = [];
@@ -116,7 +117,8 @@ export function CalendarView({ vaultPath }: { vaultPath: string }) {
         }
       }));
       // Tasks → due day.
-      const tasks = await invoke<BoardTask[]>("tasks_read_all", { vault: vaultPath }).catch(() => [] as BoardTask[]);
+      const tasksRaw = await invoke<BoardTask[]>("tasks_read_all", { vault: vaultPath }).catch(() => [] as BoardTask[]);
+      const tasks = Array.isArray(tasksRaw) ? tasksRaw : [];
       for (const t of tasks) {
         if (!t.due || t.done || t.trashed) continue;
         out.push({ key: `task:${t.domain}:${t.id ?? t.text}`, kind: "task", title: t.text, domain: t.domain, dateKey: t.due, detail: `task · ${t.status || "todo"}`, task: t });

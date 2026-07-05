@@ -649,7 +649,7 @@ export default function App() {
     if (!vaultPath) return;
     try {
       const d = await invoke<Domain[]>("scan_vault", { path: vaultPath });
-      setDomains(d);
+      setDomains(Array.isArray(d) ? d : []);
       setVaultError(null);
       setDomainsLoaded(true);
       void refreshDomainStats(d.map((x) => x.name));
@@ -1384,7 +1384,7 @@ export default function App() {
   const refreshClis = useCallback(async (): Promise<CliInfo[]> => {
     try {
       const list = await invoke<CliInfo[]>("detect_clis");
-      setClis(list);
+      setClis(Array.isArray(list) ? list : []);
       setClisDetected(true);
       // Validate every detected provider right away (once per session), so
       // valid / not-valid marks are visible without expanding anything.
@@ -1420,7 +1420,7 @@ export default function App() {
         try {
           const d = await invoke<Domain[]>("scan_vault", { path: vaultPath });
           if (cancelled) return;
-          setDomains(d);
+          setDomains(Array.isArray(d) ? d : []);
           setVaultError(null);
           setDomainsLoaded(true);
           void refreshDomainStats(d.map((x) => x.name));

@@ -339,13 +339,13 @@ export function CouncilPanel({
   const [logos, setLogos] = useState<Record<string, BrandLogo>>({});
   useEffect(() => {
     if (!_vaultPath) { setMentionDomains([]); setAllSkills([]); return; }
-    invoke<Domain[]>("scan_vault", { path: _vaultPath }).then(setMentionDomains).catch(() => setMentionDomains([]));
+    invoke<Domain[]>("scan_vault", { path: _vaultPath }).then((v) => setMentionDomains(Array.isArray(v) ? v : [])).catch(() => setMentionDomains([]));
     // Only ENABLED skills feed /skills + auto-attach; disabled ones are hidden.
     invoke<SkillEntry[]>("scan_skills", { vault: _vaultPath }).then((s) => setAllSkills(s.filter((x) => x.enabled !== false))).catch(() => setAllSkills([]));
   }, [_vaultPath]);
   useEffect(() => {
     if (!_vaultPath) { setAppsCache([]); return; }
-    const load = () => invoke<EngineApp[]>("engine_apps_list").then(setAppsCache).catch(() => setAppsCache([]));
+    const load = () => invoke<EngineApp[]>("engine_apps_list").then((v) => setAppsCache(Array.isArray(v) ? v : [])).catch(() => setAppsCache([]));
     void load();
     window.addEventListener("prevail:apps-changed", load);
     return () => window.removeEventListener("prevail:apps-changed", load);
