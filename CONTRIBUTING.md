@@ -36,5 +36,6 @@ CI runs the same checks (`.github/workflows/test.yml`). Keep them green.
 Found a vulnerability? See [SECURITY.md](SECURITY.md) — please disclose privately.
 
 ## Good first issues
-The audit in `docs/AUDIT-v1.md` lists scoped tasks (App.tsx decomposition,
-lib.rs split, error boundaries). These are great entry points.
+Browse issues labelled [`good first issue`](https://github.com/fru-dev3/prevail-desktop/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+Recurring themes: App.tsx decomposition, lib.rs split, and broader error-boundary
+coverage — all approachable entry points.
