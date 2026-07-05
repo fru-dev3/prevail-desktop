@@ -32,9 +32,11 @@ const RANGES = [
 
 const PIN_KEY = "prevail.intents.pinned";
 
-export function IntentsWorkbench({ vaultPath, intents }: { vaultPath: string; intents: IntentRow[] }) {
-  // Zoom ladder, high -> low: domains (aims) > recurring (themes) > timeline (all).
-  const [view, setView] = useState<"domains" | "recurring" | "timeline">("domains");
+type Theme = { title?: string; goal?: string; domains?: string[] };
+
+export function IntentsWorkbench({ vaultPath, intents, themes = [] }: { vaultPath: string; intents: IntentRow[]; themes?: Theme[] }) {
+  // Zoom ladder, high -> low: tree (domain > theme > recurring > prompt) > recurring > all.
+  const [view, setView] = useState<"tree" | "recurring" | "timeline">("tree");
   const [q, setQ] = useState("");
   const [domain, setDomain] = useState("all");
   const [surface, setSurface] = useState("all");
@@ -84,27 +86,61 @@ export function IntentsWorkbench({ vaultPath, intents }: { vaultPath: string; in
     return [...m.values()].filter((e) => e.count > 1).sort((a, b) => b.count - a.count || b.last - a.last);
   }, [filtered]);
 
-  // Highest level: roll everything up to domains (aims). The fewest rows - one
-  // per domain - with how many questions and recurring themes nest under it, so
-  // you can zoom out past individual intents. Drill down to see them.
-  const domainRollup = useMemo(() => {
-    const m = new Map<string, { domain: string; total: number; last: number; clusters: Map<string, number>; surfaces: Set<string> }>();
-    for (const i of filtered) {
-      const d = i.domain || "general";
-      const e = m.get(d) ?? { domain: d, total: 0, last: 0, clusters: new Map<string, number>(), surfaces: new Set<string>() };
-      e.total++; e.last = Math.max(e.last, i.ts ?? 0); e.surfaces.add((i.surface || "other").toLowerCase());
-      const msg = String(i.message ?? "").trim();
-      if (msg) { const k = normKey(msg); e.clusters.set(k, (e.clusters.get(k) ?? 0) + 1); }
-      m.set(d, e);
+  // ── The nested tree (highest zoom): Domain > Theme > Recurring cluster >
+  // individual prompts. Domains and clusters are exact/deterministic; the theme
+  // rung is a best-effort keyword match of each prompt to the LLM-distilled
+  // themes for that domain (themes don't store prompt pointers), with an "Other
+  // questions" bucket for the unmatched. Domains with no distilled theme skip
+  // the theme rung and nest clusters directly.
+  const STOP = new Set("the a an and or of to for in on with your you my me is are what how do i we can should would could about get make find set this that".split(" "));
+  const tokenize = (t: string) => [...new Set(t.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !STOP.has(w)))];
+  const clusterRows = (rows: IntentRow[]) => {
+    const m = new Map<string, { key: string; text: string; count: number; last: number; rows: IntentRow[]; sample: IntentRow }>();
+    for (const r of rows) {
+      const msg = String(r.message ?? "").trim(); if (!msg) continue;
+      const k = normKey(msg);
+      const e = m.get(k) ?? { key: k, text: msg, count: 0, last: 0, rows: [], sample: r };
+      e.count++; e.rows.push(r); e.last = Math.max(e.last, r.ts ?? 0);
+      if ((r.ts ?? 0) >= (e.sample.ts ?? 0)) e.sample = r;
+      m.set(k, e);
     }
-    return [...m.values()].map((e) => ({
-      domain: e.domain, total: e.total, last: e.last, surfaces: e.surfaces,
-      recurringCount: [...e.clusters.values()].filter((c) => c > 1).length,
-      top: [...e.clusters.entries()].filter(([, c]) => c > 1).sort((a, b) => b[1] - a[1]).slice(0, 3),
-    })).sort((a, b) => b.total - a.total);
-  }, [filtered]);
+    return [...m.values()].sort((a, b) => b.count - a.count || b.last - a.last);
+  };
+  const tree = useMemo(() => {
+    const byDomain = new Map<string, IntentRow[]>();
+    for (const i of filtered) { const d = i.domain || "general"; (byDomain.get(d) ?? byDomain.set(d, []).get(d)!).push(i); }
+    const out: { domain: string; total: number; last: number; flat: boolean; themes: { title: string; count: number; clusters: ReturnType<typeof clusterRows> }[] }[] = [];
+    for (const [dom, rows] of byDomain) {
+      const dThemes = themes.filter((t) => (t.domains ?? []).some((x) => x.toLowerCase() === dom.toLowerCase()) && t.title);
+      const kw = dThemes.map((t) => new Set(tokenize(`${t.title ?? ""} ${t.goal ?? ""}`)));
+      const buckets = new Map<string, IntentRow[]>();
+      for (const t of dThemes) buckets.set(t.title!, []);
+      buckets.set("Other questions", []);
+      for (const r of rows) {
+        const toks = tokenize(String(r.message ?? ""));
+        let best = -1, bestScore = 0;
+        kw.forEach((set, i) => { const sc = toks.reduce((n, w) => n + (set.has(w) ? 1 : 0), 0); if (sc > bestScore) { bestScore = sc; best = i; } });
+        const key = best >= 0 && bestScore >= 1 ? dThemes[best]!.title! : "Other questions";
+        buckets.get(key)!.push(r);
+      }
+      const themeNodes = [...buckets.entries()].filter(([, rs]) => rs.length).map(([title, rs]) => ({ title, count: rs.length, clusters: clusterRows(rs) })).sort((a, b) => b.count - a.count);
+      const flat = dThemes.length === 0;
+      out.push({ domain: dom, total: rows.length, last: Math.max(0, ...rows.map((r) => r.ts ?? 0)), flat, themes: themeNodes });
+    }
+    return out.sort((a, b) => b.total - a.total);
+  }, [filtered, themes]);
 
-  const drillTo = (dom: string) => { setDomain(dom); setView("recurring"); };
+  // Expand state (one Set of composite keys) + lazy per-domain ideal-state.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExp = (k: string) => setExpanded((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const [ideals, setIdeals] = useState<Record<string, string>>({});
+  const openDomain = (dom: string, key: string) => {
+    toggleExp(key);
+    if (ideals[dom] === undefined) {
+      invoke<string>("read_domain_ideal", { vault: vaultPath, domain: dom }).then((t) => setIdeals((m) => ({ ...m, [dom]: (t || "").trim() }))).catch(() => setIdeals((m) => ({ ...m, [dom]: "" })));
+    }
+  };
+  const idealLine = (md: string) => { const l = (md || "").replace(/^#.*$/gm, "").split("\n").map((x) => x.trim()).filter(Boolean); return l[0]?.slice(0, 160) ?? ""; };
 
   // Timeline groups.
   const groups = useMemo(() => {
@@ -194,7 +230,7 @@ export function IntentsWorkbench({ vaultPath, intents }: { vaultPath: string; in
       <div className="flex items-center gap-2">
         <span className="hidden font-mono text-[10px] uppercase tracking-wide text-text-muted sm:inline">zoom</span>
         <div className="inline-flex overflow-hidden rounded-lg border border-border">
-          <button onClick={() => setView("domains")} title="Highest level: roll up to domains" className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${view === "domains" ? "bg-accent text-background" : "bg-surface text-text-secondary hover:bg-surface-strong"}`}><Boxes className="h-3.5 w-3.5" /> Domains</button>
+          <button onClick={() => setView("tree")} title="Nested: domain > theme > recurring > question" className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${view === "tree" ? "bg-accent text-background" : "bg-surface text-text-secondary hover:bg-surface-strong"}`}><Boxes className="h-3.5 w-3.5" /> Tree</button>
           <button onClick={() => setView("recurring")} title="Mid level: recurring themes" className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${view === "recurring" ? "bg-accent text-background" : "bg-surface text-text-secondary hover:bg-surface-strong"}`}><Repeat2 className="h-3.5 w-3.5" /> Recurring</button>
           <button onClick={() => setView("timeline")} title="Lowest level: every question" className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${view === "timeline" ? "bg-accent text-background" : "bg-surface text-text-secondary hover:bg-surface-strong"}`}><Clock className="h-3.5 w-3.5" /> All</button>
         </div>
@@ -208,30 +244,80 @@ export function IntentsWorkbench({ vaultPath, intents }: { vaultPath: string; in
         )}
       </div>
 
-      {/* DOMAINS (highest) */}
-      {view === "domains" && (
-        domainRollup.length === 0 ? <Empty text={intents.length ? "Nothing matches the current filters." : "No intents captured yet."} /> : (
+      {/* TREE (highest): Domain > Theme > Recurring cluster > prompts */}
+      {view === "tree" && (
+        tree.length === 0 ? <Empty text={intents.length ? "Nothing matches the current filters." : "No intents captured yet."} /> : (
           <div className="flex flex-col gap-2">
-            <p className="text-[11px] text-text-muted">Every question rolled up to its life domain - the highest level. Click a domain to zoom in on its recurring themes.</p>
-            {domainRollup.map((d) => (
-              <button key={d.domain} onClick={() => drillTo(d.domain)} className="group rounded-xl border border-border bg-surface p-3 text-left hover:border-accent-border">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Boxes className="h-4 w-4" /></span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
+            <p className="text-[11px] text-text-muted">The full hierarchy: each domain rolls up its themes; each theme its recurring questions; each cluster its individual prompts. Expand to drill down. Theme grouping is a best-effort match to the distilled themes above.</p>
+            {tree.map((d) => {
+              const dk = `d:${d.domain}`; const dOpen = expanded.has(dk);
+              return (
+                <div key={dk} className="overflow-hidden rounded-xl border border-border bg-surface">
+                  <button onClick={() => openDomain(d.domain, dk)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-warm">
+                    <ChevronRight className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${dOpen ? "rotate-90" : ""}`} />
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent"><Boxes className="h-4 w-4" /></span>
+                    <span className="min-w-0 flex-1">
                       <span className="font-display text-base font-semibold tracking-tight text-text-primary">{titleCase(d.domain)}</span>
-                      <span className="font-mono text-[11px] tabular-nums text-text-muted">{d.total} question{d.total === 1 ? "" : "s"}{d.recurringCount ? ` · ${d.recurringCount} recurring` : ""}</span>
+                      <span className="ml-2 font-mono text-[11px] tabular-nums text-text-muted">{d.total} question{d.total === 1 ? "" : "s"} · {d.themes.length} {d.flat ? "group" : "theme"}{d.themes.length === 1 ? "" : "s"}</span>
+                    </span>
+                  </button>
+                  {dOpen && (
+                    <div className="border-t border-border-subtle px-3 py-2 pl-9">
+                      {ideals[d.domain] && idealLine(ideals[d.domain]) && (
+                        <div className="mb-2 rounded-md border border-accent-border/40 bg-accent-soft/20 px-2.5 py-1.5 text-[12px] text-text-secondary"><span className="font-mono text-[9px] uppercase tracking-wide text-accent">Aim</span> · {idealLine(ideals[d.domain])}</div>
+                      )}
+                      {d.themes.map((t) => {
+                        const tk = `t:${d.domain}:${t.title}`; const tOpen = expanded.has(tk) || d.flat;
+                        const body = (
+                          <div className={d.flat ? "" : "border-t border-border-subtle/60 pl-6"}>
+                            {t.clusters.map((c) => {
+                              const ck = `c:${d.domain}:${t.title}:${c.key}`; const cOpen = expanded.has(ck);
+                              const recur = c.count > 1;
+                              return (
+                                <div key={ck} className="border-b border-border-subtle/40 last:border-0">
+                                  <div className="flex items-center gap-2 py-1.5">
+                                    <button onClick={() => recur && toggleExp(ck)} className={`flex min-w-0 flex-1 items-center gap-2 text-left ${recur ? "hover:text-accent" : ""}`}>
+                                      {recur ? <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${cOpen ? "rotate-90" : ""}`} /> : <span className="w-3.5 shrink-0" />}
+                                      {recur && <span className="shrink-0 rounded-full bg-accent-soft px-1.5 font-mono text-[10px] font-semibold tabular-nums text-accent">{c.count}×</span>}
+                                      <span className="truncate text-[13px] text-text-primary">{c.text}</span>
+                                    </button>
+                                    <Actions row={c.sample} k={ck} />
+                                  </div>
+                                  {recur && cOpen && (
+                                    <div className="pb-1.5 pl-6">
+                                      {c.rows.map((r, ri) => (
+                                        <div key={ri} className="flex items-center gap-2 py-0.5 font-mono text-[10px] text-text-muted">
+                                          <span className="w-1 shrink-0 rounded-full">·</span>
+                                          <span>{r.ts ? new Date(r.ts).toLocaleString("sv-SE") : ""}</span>
+                                          <span className="text-ai">{surfLabel(r.surface)}</span>
+                                          {r.host && <span>{r.host}</span>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                        if (d.flat) return <div key={tk}>{body}</div>;
+                        return (
+                          <div key={tk} className="mb-1 rounded-lg">
+                            <button onClick={() => toggleExp(tk)} className="flex w-full items-center gap-2 py-1.5 text-left hover:text-accent">
+                              <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${tOpen ? "rotate-90" : ""}`} />
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-surface-warm text-text-muted"><Repeat2 className="h-3 w-3" /></span>
+                              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-text-primary">{t.title}</span>
+                              <span className="shrink-0 font-mono text-[10px] tabular-nums text-text-muted">{t.count}</span>
+                            </button>
+                            {tOpen && body}
+                          </div>
+                        );
+                      })}
                     </div>
-                    {d.top.length > 0 && (
-                      <div className="mt-1 truncate text-[12px] text-text-secondary">
-                        {d.top.map(([k, c], i) => <span key={k}>{i > 0 ? " · " : ""}<span className="font-mono text-[10px] text-accent">{c}×</span> {k}</span>)}
-                      </div>
-                    )}
-                  </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-text-muted group-hover:text-accent" />
+                  )}
                 </div>
-              </button>
-            ))}
+              );
+            })}
           </div>
         )
       )}
