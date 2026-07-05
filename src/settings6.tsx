@@ -2,7 +2,7 @@
 // Council defaults, Configuration (groups the memory/tasks/ideal sub-sections),
 // and the Agents catalog (AgentCard + AgentsSection).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, FileX, FolderCheck, FolderX, Globe, ListChecks, Loader2, Lock, LockOpen, Scale, Search, Server, ShieldCheck, ShieldOff, Sigma, Sparkles, Target, Terminal, User, Wifi, WifiOff, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, FileX, FolderCheck, FolderX, Globe, ListChecks, Loader2, Lock, LockOpen, Mail, MailCheck, Scale, Search, Send, Server, ShieldCheck, ShieldOff, Sigma, Sparkles, Target, Terminal, User, Wifi, WifiOff, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { DISCOVERED_MODELS, RUNTIME_META, VENDOR_BRAND, isHarnessRuntime } from "./constants";
@@ -131,6 +131,77 @@ function VaultLockToggle() {
   );
 }
 
+// Outbound Contact - who Prevail may reach on your behalf. A SEPARATE dimension
+// from the other three: Bunker = where data goes, Vault Lock = what files, 
+// Incognito = what the model sees; this one = who gets contacted. Enforced in
+// the engine (~/.prevail/config.json emailPolicy) at the gws execution choke
+// point, so every sender - chat, loops, agents - obeys it regardless of surface.
+// Locked down by DEFAULT: mail to your own accounts sends; anything addressed to
+// another person is saved as a Gmail draft for you to review and send yourself.
+function OutboundContactToggle() {
+  type Policy = "self-only" | "draft-others" | "allow";
+  const [policy, setPolicy] = useState<Policy>("draft-others");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    invoke<{ policy?: string }>("email_policy_get")
+      .then((r) => {
+        const v = r?.policy;
+        if (v === "self-only" || v === "draft-others" || v === "allow") setPolicy(v);
+      })
+      .catch(() => {});
+  }, []);
+  async function apply(next: Policy) {
+    setBusy(true);
+    try {
+      await invoke("email_policy_set", { policy: next });
+      setPolicy(next);
+    } catch (e) { console.error("email_policy_set", e); } finally { setBusy(false); }
+  }
+  const on = policy !== "allow";
+  // Turning the guardrail ON lands on the default (draft-others); OFF = allow.
+  function onToggle(next: boolean) { void apply(next ? "draft-others" : "allow"); }
+  const chips: StatusChip[] = [
+    { Icon: MailCheck, label: "Email to you", state: "Sends", good: true },
+    { Icon: Mail, label: "Email to others", state: policy === "allow" ? "Sends" : policy === "self-only" ? "Blocked" : "Draft only", good: on },
+    { Icon: Send, label: "Autonomous outreach", state: on ? "Needs your send" : "Allowed", good: on },
+  ];
+  return (
+    <div className={`rounded-xl border p-4 ${on ? "border-accent-border bg-accent-soft/30" : "border-border bg-surface"}`}>
+      <div className="flex items-center gap-3">
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${on ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
+          {on ? <ShieldCheck className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-text-primary">{on ? "On - only you receive email directly" : "Off - approved sends go out as addressed"}</div>
+          <div className="mt-0.5 text-xs text-text-secondary">
+            {on
+              ? policy === "self-only"
+                ? "Mail to your own accounts sends. Anything addressed to another person is refused outright - nothing reaches a third party from your account."
+                : "Mail to your own accounts sends. Anything addressed to another person becomes a Gmail draft for you to review and hit send yourself - even after an approval tap."
+              : "Approved sends run exactly as addressed, including to other people. The approval queue is the only gate."}
+          </div>
+        </div>
+        <Toggle on={on} disabled={busy} onChange={onToggle} label="Outbound contact guardrail" />
+      </div>
+      {on && (
+        <div className="mt-3 flex gap-1.5 border-t border-border-subtle pt-3">
+          {([["draft-others", "Draft for my review"], ["self-only", "Block entirely"]] as const).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => void apply(v)}
+              disabled={busy}
+              className={`rounded-md border px-2.5 py-1 text-[11px] font-medium ${policy === v ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-surface text-text-muted hover:bg-surface-strong"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      <StatusChips items={chips} />
+    </div>
+  );
+}
+
 export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boolean; onChange: (on: boolean) => void }) {
   type BunkerStatus = { enabled: boolean; network_blocked: boolean; web_blocked: boolean; cloud_blocked: boolean; local_available: boolean };
   const [status, setStatus] = useState<BunkerStatus | null>(null);
@@ -195,7 +266,7 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
     <>
       <SettingsHeader
         title="Privacy"
-        subtitle="Three independent controls, each answering a different question. They work in any combination."
+        subtitle="Four independent controls, each answering a different question. They work in any combination."
       />
 
       {/* ── SECTION 1 - BUNKER MODE: where your data can go ─────────────────── */}
@@ -291,6 +362,15 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
           blurb="How much of you the model sees. On = a blank model with none of your context. You can also go incognito per-surface from each composer."
         />
         <GlobalIncognitoToggle />
+      </section>
+
+      {/* ── SECTION 4 - OUTBOUND CONTACT: who Prevail may reach for you ─────── */}
+      <section className="mt-6 border-t border-border-subtle pt-6">
+        <PrivacyGroupHead
+          title="Outbound Contact"
+          blurb="Who Prevail may reach on your behalf. On = email sends only to your own accounts; anything to another person waits as a draft you send yourself. On by default."
+        />
+        <OutboundContactToggle />
       </section>
 
       {/* Telemetry lives under Privacy (moved from Safety). Anonymous, opt-in,
