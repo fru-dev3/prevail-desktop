@@ -67,6 +67,20 @@ const UI_PREFS_EXCLUDE_PREFIX = [
   // vault paths and holds passcode hashes (a credential). Never replicate it.
   "prevail.profiles",
 ];
+// Profile-scoped keys: EVERYTHING that is user configuration travels with the
+// profile (theme, palette, model picks, domain toggles, framework, policy...),
+// so switching profiles swaps the whole look-and-feel and a fresh profile
+// starts from defaults. Only genuinely device-bound or credential keys are
+// excluded - those must never move between profiles or machines.
+const PROFILE_LOCAL_EXCLUDE = [
+  "prevail.desktop.vaultPath", "prevail.desktop.vaultProduction", "prevail.web.",
+  "prevail.backup.", "prevail.bench.schedule.",
+  "prevail.pref.webuiPass", "prevail.pref.webuiUser", "prevail.profiles",
+];
+export function isProfileScopedPrefKey(k: string): boolean {
+  if (!k.startsWith("prevail.")) return false;
+  return !PROFILE_LOCAL_EXCLUDE.some((p) => k.startsWith(p));
+}
 export function isSyncablePrefKey(k: string): boolean {
   if (!k.startsWith("prevail.")) return false;
   return !UI_PREFS_EXCLUDE_PREFIX.some((p) => k.startsWith(p));
@@ -95,9 +109,17 @@ export function scheduleUiPrefsPush() {
 // Snapshot on leaving a profile; hydrate on entering one.
 
 /** Write the current syncable prefs into the given profile's vault. */
+function snapshotProfilePrefs(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && isProfileScopedPrefKey(k)) out[k] = localStorage.getItem(k) ?? "";
+  }
+  return out;
+}
 export async function saveProfilePrefs(vault: string | null): Promise<void> {
   if (isBrowser() || !vault) return;
-  try { await invoke("profile_prefs_set", { vault, json: JSON.stringify(snapshotUiPrefs()) }); } catch { /* best effort */ }
+  try { await invoke("profile_prefs_set", { vault, json: JSON.stringify(snapshotProfilePrefs()) }); } catch { /* best effort */ }
 }
 
 /** Load a profile's saved prefs from its vault into localStorage, OVERWRITING
@@ -110,17 +132,18 @@ export async function hydrateProfilePrefs(vault: string | null): Promise<boolean
     const raw = await invoke<string>("profile_prefs_get", { vault });
     const obj = JSON.parse(raw || "{}") as Record<string, string>;
     if (!obj || typeof obj !== "object") return false;
-    // A profile that has never saved prefs (empty set) INHERITS the current prefs
-    // rather than being blanked - the next snapshot then captures them as its own.
-    if (Object.keys(obj).length === 0) return false;
-    // Remove existing syncable keys not present in the incoming set.
+    // Every profile is independent. Clear the current profile-scoped keys, then
+    // apply this profile's saved set. A brand-new profile (empty saved set) is
+    // left with NO profile-scoped keys -> the app falls back to defaults (dark
+    // theme, prevail palette, etc.), so it starts fresh instead of inheriting
+    // the profile we just left.
     const incoming = new Set(Object.keys(obj));
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
-      if (k && isSyncablePrefKey(k) && !incoming.has(k)) localStorage.removeItem(k);
+      if (k && isProfileScopedPrefKey(k) && !incoming.has(k)) localStorage.removeItem(k);
     }
     for (const [k, v] of Object.entries(obj)) {
-      if (isSyncablePrefKey(k)) localStorage.setItem(k, v);
+      if (isProfileScopedPrefKey(k)) localStorage.setItem(k, v);
     }
     return true;
   } catch { return false; }
