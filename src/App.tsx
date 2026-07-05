@@ -338,6 +338,9 @@ export default function App() {
         lsSet(LS.vault, vp);
         setTab("chat");
         setUiPrefsNonce((n) => n + 1);
+        // The entered profile's theme/palette are now in localStorage; tell the
+        // appearance hook to re-read them so the look follows the profile.
+        window.dispatchEvent(new Event("prevail:appearance-reload"));
         window.dispatchEvent(new Event("prevail:domains-changed"));
       })();
     };
