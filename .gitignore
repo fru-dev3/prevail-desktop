@@ -47,3 +47,6 @@ bun.lock
 .env.local
 .env.*.local
 .env.production.local
+
+# Real build keys: official build injects from CI secrets; never commit.
+.env
