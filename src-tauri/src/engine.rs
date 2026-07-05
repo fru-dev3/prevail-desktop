@@ -3393,6 +3393,49 @@ pub async fn engine_vault_migrate_v4(vault: String) -> Result<serde_json::Value,
     .map_err(|e| format!("join: {e}"))?
 }
 
+/// The Action Gateway queue: connector writes (claude.ai connectors, Composio)
+/// a PreToolUse hook held for approval. Approval mints a single-use grant the
+/// model's retry consumes - unlike gws, execution re-runs through the chat.
+#[tauri::command]
+pub async fn engine_acts_pending(vault: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_engine_json(&["acts", "pending-list", "--vault", &vault])
+    })
+    .await
+    .map_err(|e| format!("acts pending task failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn engine_acts_approve(
+    vault: String,
+    id: String,
+    domain: String,
+    summary: String,
+    approval: String,
+    allow_sensitive: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    // Same single-use token spine as gws approvals. Do NOT weaken.
+    crate::broker::authorize_action(&domain, &summary, &approval)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut args: Vec<&str> = vec!["acts", "approve", "--id", &id, "--vault", &vault];
+        if allow_sensitive == Some(true) {
+            args.push("--allow-sensitive");
+        }
+        run_engine_json(&args)
+    })
+    .await
+    .map_err(|e| format!("acts approve task failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn engine_acts_dismiss(vault: String, id: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        run_engine_json(&["acts", "dismiss", "--id", &id, "--vault", &vault])
+    })
+    .await
+    .map_err(|e| format!("acts dismiss task failed: {e}"))?
+}
+
 /// List the queued gws write actions awaiting approval.
 /// `prevail --vault <vault> gws pending-list --json` -> the pending array.
 #[tauri::command]

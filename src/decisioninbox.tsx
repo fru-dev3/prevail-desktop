@@ -18,6 +18,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // delete something) is queued by the CLI to <vault>/_meta/pending_gws.json and
 // surfaced here under "Needs you". Shape matches the CLI contract.
 type GwsPending = { id: string; domain: string; summary: string; args?: string[]; ts?: number };
+// Action Gateway queue: connector writes a PreToolUse hook held. Approval
+// mints a single-use grant; the CHAT retries the tool to actually run it.
+type PendingAct = { id: string; domain: string; summary: string; tool: string; argsJson?: string; categories?: string[]; ts?: number };
 
 function readSnoozed(): Record<string, number> {
   try { return JSON.parse(localStorage.getItem(SNOOZE_KEY) || "{}"); } catch { return {}; }
@@ -36,6 +39,7 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
   // (v1 has no CLI drop command, so a dismiss just hides the card; the item stays
   // in pending_gws.json until run).
   const [gws, setGws] = useState<GwsPending[]>([]);
+  const [acts, setActs] = useState<PendingAct[]>([]);
   const [gwsDismissed, setGwsDismissed] = useState<Record<string, boolean>>({});
 
   const reload = useCallback(() => {
@@ -45,6 +49,9 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
     invoke<GwsPending[]>("engine_gws_pending_list", { vault: vaultPath })
       .then((d) => setGws(Array.isArray(d) ? d : []))
       .catch((e) => console.error("engine_gws_pending_list", e));
+    invoke<PendingAct[]>("engine_acts_pending", { vault: vaultPath })
+      .then((a) => setActs(Array.isArray(a) ? a : []))
+      .catch((e) => console.error("engine_acts_pending", e));
   }, [vaultPath]);
   useEffect(() => { reload(); }, [reload]);
   useEffect(() => {
@@ -181,6 +188,64 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
   // pending_gws.json until it is actually run).
   const gwsDismiss = (g: GwsPending) => setGwsDismissed((m) => ({ ...m, [g.id]: true }));
 
+  // Connector acts (Action Gateway): approving mints a single-use grant; the
+  // action then runs when the CHAT calls the tool again. Sensitive categories
+  // require the explicit release, same two-tap pattern as held gws writes.
+  const actApprove = async (a: PendingAct, allowSensitive = false) => {
+    setBusy(a.id); setReport(null);
+    try {
+      const approval = await invoke<string>("loop_request_approval", { domain: a.domain, action: a.summary });
+      const res = await invoke<{ ok?: boolean; error?: string }>("engine_acts_approve", { vault: vaultPath, id: a.id, domain: a.domain, summary: a.summary, approval, allowSensitive });
+      if (res?.ok) {
+        setReport({ text: a.summary, report: "Approved. Go back to the chat and tell it to retry - the approval is good for one run within 10 minutes." });
+        setActs((prev) => prev.filter((x) => x.id !== a.id));
+      } else {
+        setReport({ text: a.summary, report: res?.error || "approval failed" });
+      }
+    } catch (e) {
+      setReport({ text: a.summary, report: `Approval failed: ${e}` });
+    } finally { setBusy(null); }
+  };
+  const actDismiss = async (a: PendingAct) => {
+    try { await invoke("engine_acts_dismiss", { vault: vaultPath, id: a.id }); } catch (e) { console.error("acts dismiss", e); }
+    setActs((prev) => prev.filter((x) => x.id !== a.id));
+  };
+
+  const actCard = (a: PendingAct) => {
+    const running = busy === a.id;
+    const sensitive = (a.categories?.length ?? 0) > 0;
+    return (
+      <div key={a.id} className="rounded-xl border border-border bg-surface px-3.5 py-3">
+        <div className="mb-1 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
+          <span className="text-warn"><Play className="h-3 w-3" /></span>
+          {titleCase(a.domain || "general")}
+          <span className="text-text-muted/50">· connector</span>
+          {a.ts ? <span className="text-text-muted/50">· queued {relTime(a.ts)}</span> : null}
+        </div>
+        <div className="text-[13px] leading-snug text-text-primary">{a.summary}</div>
+        {a.argsJson && <div className="mt-0.5 break-all font-mono text-[11px] text-text-muted">{a.argsJson.slice(0, 400)}</div>}
+        {sensitive && (
+          <div className="mt-1.5 rounded-md border border-warn/40 bg-warn/5 px-2 py-1.5 text-[11px] leading-snug text-text-secondary">
+            Carries {a.categories!.join("; ")}. Nothing has been sent. Release it only if you are sure.
+          </div>
+        )}
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          {running && <span className="inline-flex items-center gap-1 text-[11px] text-text-muted"><Loader2 className="h-3 w-3 animate-spin" /> working…</span>}
+          {!running && (
+            <>
+              <button onClick={() => actApprove(a, sensitive)} className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold ${sensitive ? "border border-warn/60 bg-warn/10 text-text-primary hover:bg-warn/20" : "bg-accent text-background hover:bg-accent-hover"}`}>
+                <Play className="h-3 w-3" /> {sensitive ? "Approve including sensitive info" : "Approve"}
+              </button>
+              <button onClick={() => actDismiss(a)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-text-muted hover:!text-err">
+                <X className="h-3 w-3" /> Dismiss
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const gwsCard = (g: GwsPending) => {
     const running = busy === g.id;
     const cmd = Array.isArray(g.args) ? g.args.join(" ") : "";
@@ -278,7 +343,7 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
       {/* Section header matches the board's column headers (compact mono caps). */}
       <div className="mb-2 flex items-center gap-2 px-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-muted">
         <Inbox className="h-3 w-3" /> Needs you
-        <span className="text-text-muted/50">· {active.length + gwsVisible.length || "0"}</span>
+        <span className="text-text-muted/50">· {active.length + gwsVisible.length + acts.length || "0"}</span>
         {sleeping.length > 0 && (
           <button onClick={() => setShowSnoozed((s) => !s)} className="ml-auto normal-case tracking-normal text-text-muted hover:text-text-secondary">
             snoozed ({sleeping.length}) {showSnoozed ? "▾" : "▸"}
@@ -287,12 +352,13 @@ export function DecisionInbox({ vaultPath }: { vaultPath: string }) {
       </div>
 
       <div className="flex flex-col gap-2.5">
-        {active.length === 0 && gwsVisible.length === 0 && (
+        {active.length === 0 && gwsVisible.length === 0 && acts.length === 0 && (
           <div className="rounded-xl border border-dashed border-border-subtle px-4 py-10 text-center text-sm text-text-muted">
             Nothing needs you right now. AI-owned tasks queue their approvals and sign-offs here.
           </div>
         )}
         {gwsVisible.map(gwsCard)}
+        {acts.map(actCard)}
         {active.map(card)}
       </div>
 
