@@ -2,7 +2,7 @@
 // Council defaults, Configuration (groups the memory/tasks/ideal sub-sections),
 // and the Agents catalog (AgentCard + AgentsSection).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpRight, Banknote, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, FileX, Fingerprint, FolderCheck, FolderX, Globe, HeartPulse, ListChecks, Loader2, Lock, LockOpen, Mail, MailCheck, Scale, Search, Send, Server, ShieldCheck, ShieldOff, Sigma, Sparkles, Target, Terminal, User, Wifi, WifiOff, X } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Brain, Check, ChevronRight, Cloud, CloudOff, Cpu, Crown, FileX, Fingerprint, FolderCheck, FolderX, Globe, ListChecks, Loader2, Lock, LockOpen, Mail, MailCheck, Scale, Search, Send, Server, ShieldCheck, ShieldOff, Sigma, Sparkles, Target, Terminal, User, Wifi, WifiOff, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { invoke } from "./bridge";
 import { DISCOVERED_MODELS, RUNTIME_META, VENDOR_BRAND, isHarnessRuntime } from "./constants";
@@ -131,38 +131,41 @@ function VaultLockToggle() {
   );
 }
 
-// Outbound Contact - who Prevail may reach on your behalf. A SEPARATE dimension
-// from the other three: Bunker = where data goes, Vault Lock = what files, 
-// Incognito = what the model sees; this one = who gets contacted. Enforced in
-// the engine (~/.prevail/config.json emailPolicy) at the gws execution choke
-// point, so every sender - chat, loops, agents - obeys it regardless of surface.
-// Locked down by DEFAULT: mail to your own accounts sends; anything addressed to
-// another person is saved as a Gmail draft for you to review and send yourself.
-function OutboundContactToggle() {
-  type Policy = "self-only" | "draft-others" | "allow";
-  const [policy, setPolicy] = useState<Policy>("draft-others");
+// Outbound Guardrail - ONE switch, like the other privacy controls. On (the
+// default) engages BOTH engine-enforced outbound protections in one move:
+//   who  - email to anyone but you is saved as a Gmail draft you send yourself
+//          (emailPolicy draft-others)
+//   what - outbound content to another party carrying PII, money figures,
+//          health/legal/salary/strategy details or verbatim quotes is held
+//          until you release that exact action (egressGuard on)
+// Off disables both (approved actions run exactly as addressed). Finer modes
+// (block-entirely email) stay available via the CLI: prevail email-policy /
+// egress-guard. State is engine-side config, so every surface obeys it; the
+// bottom ribbon mirrors it live via the prevail:guardrail-changed event.
+function OutboundGuardrailToggle() {
+  const [on, setOn] = useState(true);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    invoke<{ policy?: string }>("email_policy_get")
-      .then((r) => {
-        const v = r?.policy;
-        if (v === "self-only" || v === "draft-others" || v === "allow") setPolicy(v);
-      })
-      .catch(() => {});
+    Promise.all([
+      invoke<{ policy?: string }>("email_policy_get").catch(() => null),
+      invoke<{ mode?: string }>("egress_guard_get").catch(() => null),
+    ]).then(([p, g]) => {
+      if (p || g) setOn(p?.policy !== "allow" && g?.mode !== "off");
+    });
   }, []);
-  async function apply(next: Policy) {
+  async function toggle(next: boolean) {
     setBusy(true);
     try {
-      await invoke("email_policy_set", { policy: next });
-      setPolicy(next);
-    } catch (e) { console.error("email_policy_set", e); } finally { setBusy(false); }
+      await invoke("email_policy_set", { policy: next ? "draft-others" : "allow" });
+      await invoke("egress_guard_set", { mode: next ? "on" : "off" });
+      setOn(next);
+      window.dispatchEvent(new CustomEvent("prevail:guardrail-changed"));
+    } catch (e) { console.error("guardrail toggle", e); } finally { setBusy(false); }
   }
-  const on = policy !== "allow";
-  // Turning the guardrail ON lands on the default (draft-others); OFF = allow.
-  function onToggle(next: boolean) { void apply(next ? "draft-others" : "allow"); }
   const chips: StatusChip[] = [
     { Icon: MailCheck, label: "Email to you", state: "Sends", good: true },
-    { Icon: Mail, label: "Email to others", state: policy === "allow" ? "Sends" : policy === "self-only" ? "Blocked" : "Draft only", good: on },
+    { Icon: Mail, label: "Email to others", state: on ? "Draft only" : "Sends", good: on },
+    { Icon: Fingerprint, label: "PII, figures, health, legal", state: on ? "Held" : "May leave", good: on },
     { Icon: Send, label: "Autonomous outreach", state: on ? "Needs your send" : "Allowed", good: on },
   ];
   return (
@@ -172,79 +175,14 @@ function OutboundContactToggle() {
           {on ? <ShieldCheck className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-text-primary">{on ? "On - only you receive email directly" : "Off - approved sends go out as addressed"}</div>
+          <div className="text-sm font-semibold text-text-primary">{on ? "On - nothing reaches another party without you" : "Off - approved actions run as addressed"}</div>
           <div className="mt-0.5 text-xs text-text-secondary">
             {on
-              ? policy === "self-only"
-                ? "Mail to your own accounts sends. Anything addressed to another person is refused outright - nothing reaches a third party from your account."
-                : "Mail to your own accounts sends. Anything addressed to another person becomes a Gmail draft for you to review and hit send yourself - even after an approval tap."
-              : "Approved sends run exactly as addressed, including to other people. The approval queue is the only gate."}
+              ? "Email to anyone but you becomes a Gmail draft you send yourself, and sensitive details (SSN, figures, health, legal, salary, plans, quotes) are held at the boundary until you release them. Content sent to yourself is never restricted."
+              : "Approved sends go out exactly as addressed, unscanned. Only the approval queue stands between your details and the outside."}
           </div>
         </div>
-        <Toggle on={on} disabled={busy} onChange={onToggle} label="Outbound contact guardrail" />
-      </div>
-      {on && (
-        <div className="mt-3 flex gap-1.5 border-t border-border-subtle pt-3">
-          {([["draft-others", "Draft for my review"], ["self-only", "Block entirely"]] as const).map(([v, label]) => (
-            <button
-              key={v}
-              onClick={() => void apply(v)}
-              disabled={busy}
-              className={`rounded-md border px-2.5 py-1 text-[11px] font-medium ${policy === v ? "border-accent-border bg-accent-soft text-accent" : "border-border bg-surface text-text-muted hover:bg-surface-strong"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-      <StatusChips items={chips} />
-    </div>
-  );
-}
-
-// Sensitive Information - what CONTENT may leave, the companion dial to
-// Outbound Contact (who may be reached). Engine-enforced at the egress choke
-// points (Google write executor, browser agent typing), so chat, loops, agents
-// and the CLI all hit the same gate. On by default: outbound content carrying
-// PII, money figures, health/legal/salary/strategy details, or verbatim quotes
-// is held at the boundary until the user releases that exact action.
-function SensitiveInfoToggle() {
-  const [on, setOn] = useState(true);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    invoke<{ mode?: string }>("egress_guard_get")
-      .then((r) => { if (r?.mode === "on" || r?.mode === "off") setOn(r.mode === "on"); })
-      .catch(() => {});
-  }, []);
-  async function toggle(next: boolean) {
-    setBusy(true);
-    try {
-      await invoke("egress_guard_set", { mode: next ? "on" : "off" });
-      setOn(next);
-    } catch (e) { console.error("egress_guard_set", e); } finally { setBusy(false); }
-  }
-  const chips: StatusChip[] = [
-    { Icon: Fingerprint, label: "Identifiers", state: on ? "Held" : "May leave", good: on },
-    { Icon: Banknote, label: "Money figures", state: on ? "Held" : "May leave", good: on },
-    { Icon: HeartPulse, label: "Health", state: on ? "Held" : "May leave", good: on },
-    { Icon: Scale, label: "Legal status", state: on ? "Held" : "May leave", good: on },
-    { Icon: Target, label: "Plans, strategy", state: on ? "Held" : "May leave", good: on },
-  ];
-  return (
-    <div className={`rounded-xl border p-4 ${on ? "border-accent-border bg-accent-soft/30" : "border-border bg-surface"}`}>
-      <div className="flex items-center gap-3">
-        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${on ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-muted"}`}>
-          {on ? <ShieldCheck className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-text-primary">{on ? "On - sensitive details are held at the boundary" : "Off - outbound content is not scanned"}</div>
-          <div className="mt-0.5 text-xs text-text-secondary">
-            {on
-              ? "Anything leaving to another party is scanned. SSN, EIN, cards, bank details, money figures, dates of birth, health, legal status, salary, plans and verbatim quotes are held until you release that exact action. Content sent to yourself is never restricted."
-              : "Outbound email, invites, shares, and agent-typed text go out unscanned. Only the approval queue stands between your details and the outside."}
-          </div>
-        </div>
-        <Toggle on={on} disabled={busy} onChange={toggle} label="Sensitive information guardrail" />
+        <Toggle on={on} disabled={busy} onChange={toggle} label="Outbound guardrail" />
       </div>
       <StatusChips items={chips} />
     </div>
@@ -315,7 +253,7 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
     <>
       <SettingsHeader
         title="Privacy"
-        subtitle="Five independent controls, each answering a different question. They work in any combination."
+        subtitle="Four independent controls, each answering a different question. They work in any combination."
       />
 
       {/* ── SECTION 1 - BUNKER MODE: where your data can go ─────────────────── */}
@@ -413,22 +351,13 @@ export function PrivacyConnectivitySection({ enabled, onChange }: { enabled: boo
         <GlobalIncognitoToggle />
       </section>
 
-      {/* ── SECTION 4 - OUTBOUND CONTACT: who Prevail may reach for you ─────── */}
+      {/* ── SECTION 4 - OUTBOUND GUARDRAIL: nothing reaches another party ───── */}
       <section className="mt-6 border-t border-border-subtle pt-6">
         <PrivacyGroupHead
-          title="Outbound Contact"
-          blurb="Who Prevail may reach on your behalf. On = email sends only to your own accounts; anything to another person waits as a draft you send yourself. On by default."
+          title="Outbound Guardrail"
+          blurb="Whether anything can reach another party without you. On = email to others waits as a draft you send yourself, and sensitive details are held at the boundary. On by default."
         />
-        <OutboundContactToggle />
-      </section>
-
-      {/* ── SECTION 5 - SENSITIVE INFORMATION: what content may leave ───────── */}
-      <section className="mt-6 border-t border-border-subtle pt-6">
-        <PrivacyGroupHead
-          title="Sensitive Information"
-          blurb="What content may leave. On = outbound messages, invites, shares and agent-typed text are scanned; PII, figures, health, legal, salary and strategy details are held until you release them. On by default."
-        />
-        <SensitiveInfoToggle />
+        <OutboundGuardrailToggle />
       </section>
 
       {/* Telemetry lives under Privacy (moved from Safety). Anonymous, opt-in,
