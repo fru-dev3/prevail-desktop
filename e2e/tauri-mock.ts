@@ -55,7 +55,8 @@ export const FIXTURES: Record<string, unknown> = {
     { kind: "intent", ts: 1783000000000, message: "Plan my week", cli: "codex", model: "gpt", domain: "career", surface: "council", host: "mini" },
   ],
   capture_prompts_read: [],
-  intents_distilled_read: { generated_ts: 0, source_count: 0, intents: [] },
+  intents_distilled_read: { generated_ts: 1783200000, source_count: 3, intents: [{ title: "Track net worth", goal: "Know my finances", domains: ["wealth"] }] },
+  read_domain_ideal: "# Wealth\nFinancial security with a 6-month runway.",
   usage_entries: [
     { ts: 1783200000000, day: "2026-07-05", session: "s1", domain: "career", surface: "chat", cli: "claude", model: "opus", input_tokens: 1200, output_tokens: 800, est_cost_usd: 0.12, host: "mbp" },
     { ts: 1783120000000, day: "2026-07-04", session: "s2", domain: "wealth", surface: "council", cli: "codex", model: "gpt", input_tokens: 400, output_tokens: 600, est_cost_usd: 0.03, host: "mini" },
