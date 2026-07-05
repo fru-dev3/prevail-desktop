@@ -3617,7 +3617,7 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
                   link and a Make-default toggle. Shows even when auth is transient. */}
               {passThroughs.map((pt) => {
                 const rt = pt.runtime === "claude" ? "Claude Code" : pt.runtime.charAt(0).toUpperCase() + pt.runtime.slice(1);
-                const isDefault = methodOf(app) === "mcp" && (app.runtime ?? "claude") === pt.runtime;
+                const isDefault = methodOf(app) === "mcp" && app.runtime === pt.runtime;
                 const authUrl = pt.runtime === "claude" ? "https://claude.ai/settings/connectors" : pt.runtime === "gemini" ? "https://ai.google.dev" : "https://chatgpt.com/apps";
                 return (
                 <div key={pt.runtime} className="flex items-center gap-3 rounded-xl border border-accent-border bg-accent-soft/30 px-3.5 py-2.5">
@@ -3643,26 +3643,40 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
                 ); })}
               {/* Gateway options: Composio / Nango front thousands of apps. Offer
                   them so you can connect this app through a gateway you already use. */}
-              {["composio", "nango"].map((gw) => (
-                <div key={gw} className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3.5 py-2.5">
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-text-muted" />
+              {["composio", "nango"].map((gw) => {
+                const inUse = app.gateway?.provider === gw;
+                return (
+                <div key={gw} className={`flex items-center gap-3 rounded-xl border px-3.5 py-2.5 ${inUse ? "border-accent-border bg-accent-soft/20" : "border-border bg-surface"}`}>
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${inUse ? "bg-ok" : "bg-text-muted"}`} />
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-semibold text-text-primary">{gw.charAt(0).toUpperCase() + gw.slice(1)}</div>
-                    <div className="font-mono text-[10.5px] text-text-muted">connect {app.title || app.id} through your {gw} gateway (one OAuth for many apps)</div>
+                    <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">{gw.charAt(0).toUpperCase() + gw.slice(1)} {inUse && <span className="rounded border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-accent">default</span>}</div>
+                    <div className="font-mono text-[10.5px] text-text-muted">{inUse ? `this app is fronted by your ${gw} gateway` : `connect ${app.title || app.id} through your ${gw} gateway (one OAuth for many apps)`}</div>
                   </div>
-                  <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: gw === "composio" ? "connectors" : "connectors" }))} className="shrink-0 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">Connect</button>
+                  {inUse
+                    ? <span className="shrink-0 rounded-md border border-accent-border bg-accent px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-background">In use</span>
+                    : <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))} className="shrink-0 rounded-md border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-text-secondary hover:border-accent-border hover:text-accent">Connect</button>}
                 </div>
-              ))}
-              {(() => { const m = methodOf(app); return m === "mcp" || m === "cli" ? (
-                <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3.5 py-2.5">
+                );
+              })}
+              {(() => { const m = methodOf(app); if (!(m === "mcp" || m === "cli")) return null;
+                const isDefault = !app.runtime; // no runtime pin = Prevail-native serves it
+                return (
+                <div className={`flex items-center gap-3 rounded-xl border px-3.5 py-2.5 ${isDefault ? "border-accent-border bg-accent-soft/20" : "border-border bg-surface"}`}>
                   <span className={`h-2 w-2 shrink-0 rounded-full ${notConnected ? "bg-text-muted" : "bg-ok"}`} />
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-semibold text-text-primary">Prevail {m === "cli" ? "CLI" : "MCP"}</div>
+                    <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">Prevail {m === "cli" ? "CLI" : "MCP"} {isDefault && <span className="rounded border border-accent-border bg-accent-soft px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-accent">default</span>}</div>
                     <div className="font-mono text-[10.5px] text-text-muted">a server Prevail runs itself, vault-scoped · authorize once</div>
                   </div>
+                  {!isDefault && (
+                    <button
+                      onClick={() => { void invoke("engine_app_set_runtime", { id: app.id, runtime: "" }).then(() => void onReload()).catch(() => {}); }}
+                      title="Serve this app through Prevail's own connector (clears the harness runtime pin)"
+                      className="shrink-0 rounded-md border border-border px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted hover:border-accent-border hover:text-accent"
+                    >Make default</button>
+                  )}
                   {notConnected && connect && <button onClick={connect.onConnect} disabled={connect.connecting} className="shrink-0 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-accent hover:bg-accent hover:text-background disabled:opacity-50">Set up</button>}
                 </div>
-              ) : null; })()}
+                ); })()}
               {(() => { const isDefault = methodOf(app) === "browser"; return (
               <div className={`flex items-center gap-3 rounded-xl border px-3.5 py-2.5 ${isDefault ? "border-accent-border bg-accent-soft/20" : "border-border bg-surface"}`}>
                 <span className="h-2 w-2 shrink-0 rounded-full bg-text-muted" />

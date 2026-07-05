@@ -1784,7 +1784,8 @@ export function ChatPanel({
     // claude.ai connectors) exist only inside that runtime's sessions. When the
     // pin differs from the picker, the model falls back to the pinned runtime's
     // default (the picked model id belongs to the other runtime).
-    const laneCli = isApp && appRuntime && appRuntime.trim() ? appRuntime.trim() : null;
+    const KNOWN_RUNTIMES = ["claude", "codex", "gemini", "antigravity", "ollama"];
+    const laneCli = isApp && appRuntime && KNOWN_RUNTIMES.includes(appRuntime.trim()) ? appRuntime.trim() : null;
     const sendCli = laneCli ?? chatCli;
     const turnModel = laneCli && laneCli !== chatCli ? "" : chatModel;
     // Snapshot this turn's meta for usage capture (P4.7 Phase 3). Read at
