@@ -994,6 +994,15 @@ export function DomainAppsStrip({ domain }: { domain: string }) {
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
       <span className="font-mono text-[10px] uppercase tracking-wider text-text-muted">Apps</span>
+      {/* Direct jump to the Apps configuration space - saves the Editor > Apps
+          round-trip when tweaking a connector mid-flow. */}
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+        title="Open Apps configuration"
+        className="font-mono text-[10px] uppercase tracking-wider text-text-muted underline decoration-dotted underline-offset-2 transition-colors hover:text-accent"
+      >
+        configure
+      </button>
       {apps.map((a) => {
         const tint = STATUS_TINT[a.status] ?? "#9aa0a6";
         const active = activeId === a.id;
