@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { confirm as tauriConfirm, open, save } from "@tauri-apps/plugin-dialog";
 import { check as checkUpdate, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { Check, ChevronRight, Folder, Loader2, Mail, MessageSquare, MessagesSquare, Network, Radio, Send, Sparkles, Webhook, Wrench, Zap } from "lucide-react";
+import { Check, ChevronRight, Folder, Github, Loader2, Mail, MessageSquare, MessagesSquare, Network, Radio, Send, Sparkles, Star, Webhook, Wrench, Zap } from "lucide-react";
 import { siDiscord, siMatrix, siMattermost, siSignal, siTelegram } from "simple-icons";
 import { invoke, listen } from "./bridge";
 import { CollapsibleSection } from "./collapsible";
@@ -957,6 +957,55 @@ export function McpSection({ vaultPath }: { vaultPath: string }) {
 // triage what is accumulating where (the cross-domain view, vs per-domain
 // Insights). Grouped by status; shows due, source, and added date.
 
+// A quiet, honest prompt to star the repo, with the real download + star
+// counts so it reads as fact, not a nag. Downloads come from shields.io's
+// cached total endpoint; stars from the repo. Both fail silently.
+function StarOnGitHubCard() {
+  const [downloads, setDownloads] = useState<string | null>(null);
+  const [stars, setStars] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("https://img.shields.io/github/downloads/fru-dev3/prevail-desktop/total.json")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (!cancelled && j && typeof j.value === "string") setDownloads(j.value); })
+      .catch(() => {});
+    fetch("https://api.github.com/repos/fru-dev3/prevail-desktop")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (!cancelled && j && typeof j.stargazers_count === "number") setStars(j.stargazers_count); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  const hasStats = downloads !== null || stars !== null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-4 rounded-xl border border-border bg-surface p-4 shadow-sm">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+        <Star className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-text-primary">Enjoying Prevail? Star it on GitHub.</div>
+        <div className="mt-0.5 text-xs text-text-secondary">
+          Open source, GPL-3.0. A star helps other people find it.
+          {hasStats && (
+            <span className="ml-1 font-mono text-text-muted">
+              {downloads !== null ? `${downloads} downloads` : ""}
+              {downloads !== null && stars !== null ? " · " : ""}
+              {stars !== null ? `${stars} stars` : ""}
+            </span>
+          )}
+        </div>
+      </div>
+      <a
+        href="https://github.com/fru-dev3/prevail-desktop"
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-text-primary px-3 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90"
+      >
+        <Github className="h-4 w-4" /> Star on GitHub
+      </a>
+    </div>
+  );
+}
+
 export function AboutSection({ vaultPath }: { vaultPath: string }) {
   const verify = useCliVerifyLive();
   const [checking, setChecking] = useState(false);
@@ -1262,6 +1311,9 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
           </div>
         )}
       </div>
+
+      {/* Star prompt: honest social proof with the real download + star counts. */}
+      <StarOnGitHubCard />
 
       {/* Links - a horizontal wrap of chips (was a tall stacked list) to use the
           full width and shave vertical height. */}
