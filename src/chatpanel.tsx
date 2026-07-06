@@ -2828,7 +2828,7 @@ export function ChatPanel({
       <div data-tour="composer" className="shrink-0 px-6 pb-6 pt-2">
         <div className={`relative rounded-2xl border bg-surface p-3 transition-shadow ${
           (incognito || globalIncognito)
-            ? "border-accent ring-2 ring-accent/40 shadow-[0_0_24px_-4px] shadow-accent/40"
+            ? "border-dashed border-accent-border shadow-sm"
             : "border-border shadow-sm"
         }`}>
           {/* Incognito affordance: a ghost badge over the top-left edge + the glow

@@ -1290,7 +1290,7 @@ export function CouncilPanel({
             ))}
           </div>
         )}
-        <div className={`rounded-2xl border bg-surface p-3 shadow-sm transition-shadow ${(incognito || globalIncognito) ? "border-accent ring-2 ring-accent/40 shadow-[0_0_24px_-4px] shadow-accent/40" : "border-border"}`}>
+        <div className={`rounded-2xl border bg-surface p-3 shadow-sm transition-shadow ${(incognito || globalIncognito) ? "border-dashed border-accent-border" : "border-border"}`}>
           {/* One row (parity with chat): context pills on the left, the
               context-window meter on the right - so they share a line. */}
           <div className="mb-2 flex items-center justify-between gap-2 px-2">
