@@ -431,13 +431,25 @@ pub(crate) fn vault_migrate_layout(path: String) -> Result<u64, String> {
     // (7) Catch-all for cleanliness: any REMAINING loose FILE (not a directory)
     // at the root that is not hidden and not already handled -> build/. Unknown
     // DIRECTORIES are deliberately left in place rather than risk misplacing them.
+    //
+    // The agent map + its per-harness links live at the vault ROOT by design:
+    // an agent editing the vault reads <vault>/AGENTS.md (Codex), CLAUDE.md
+    // (Claude), GEMINI.md (Gemini) - all symlinks to the canonical VAULT.md.
+    // They are the sanctioned exception to the strict-root rule, so the sweep
+    // must NEVER move them into build/ (doing so leaves the links dangling and
+    // the map invisible). Keep in sync with vault-layout-v4.ts writeVaultAgentContract.
+    const HARNESS_ROOT_FILES: &[&str] = &["VAULT.md", "CLAUDE.md", "AGENTS.md", "GEMINI.md"];
     let entries = match read_dir_retry(&root) {
         Ok(e) => e,
         Err(e) => return Err(e.to_string()),
     };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') || name == "data" || name == "build" {
+        if name.starts_with('.')
+            || name == "data"
+            || name == "build"
+            || HARNESS_ROOT_FILES.contains(&name.as_str())
+        {
             continue;
         }
         let src = entry.path();
@@ -774,6 +786,49 @@ mod tests {
 
         // (d) idempotent — a second run is a no-op.
         assert_eq!(vault_migrate_layout(vs).unwrap(), 0, "second run must move nothing");
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn vault_migrate_layout_keeps_harness_map_and_links_at_root() {
+        // Regression: the strict-root sweep must NEVER move the agent map
+        // (VAULT.md) or its per-harness symlinks (CLAUDE/AGENTS/GEMINI.md) into
+        // build/. Doing so left the links dangling and the map invisible to any
+        // agent reading <vault>/AGENTS.md.
+        let vault = std::env::temp_dir().join(format!("prevail-migrate-harness-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&vault);
+        let vs = vault.to_string_lossy().to_string();
+        fs::create_dir_all(vault.join("data").join("domains")).unwrap();
+        fs::create_dir_all(vault.join("build")).unwrap();
+        // The canonical map + a per-harness symlink to it, exactly as
+        // writeVaultAgentContract lays them down.
+        fs::write(vault.join("VAULT.md"), "# VAULT.md\nthe map\n").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("VAULT.md", vault.join("AGENTS.md")).unwrap();
+        // A genuinely stray root file that SHOULD still be swept.
+        fs::write(vault.join("stray.txt"), "junk").unwrap();
+
+        vault_migrate_layout(vs.clone()).unwrap();
+
+        assert!(vault.join("VAULT.md").exists(), "VAULT.md must survive the sweep at root");
+        assert_eq!(
+            fs::read_to_string(vault.join("VAULT.md")).unwrap(),
+            "# VAULT.md\nthe map\n",
+            "VAULT.md content untouched",
+        );
+        #[cfg(unix)]
+        {
+            assert!(vault.join("AGENTS.md").exists(), "harness symlink must resolve (target still at root)");
+            assert!(!vault.join("build").join("AGENTS.md").exists(), "harness link never moved to build/");
+        }
+        assert!(!vault.join("build").join("VAULT.md").exists(), "map never moved to build/");
+        assert!(!vault.join("stray.txt").exists(), "an actual stray file is still swept");
+
+        // Idempotent: a second run leaves the harness files exactly where they are.
+        let moved2 = vault_migrate_layout(vs).unwrap();
+        assert_eq!(moved2, 0, "second run must move nothing");
+        assert!(vault.join("VAULT.md").exists());
 
         let _ = fs::remove_dir_all(&vault);
     }
