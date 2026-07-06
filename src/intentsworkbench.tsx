@@ -32,7 +32,7 @@ const RANGES = [
 
 const PIN_KEY = "prevail.intents.pinned";
 
-type Theme = { title?: string; goal?: string; domains?: string[] };
+type Theme = { title?: string; goal?: string; domains?: string[]; prompt_ts?: number[] };
 
 export function IntentsWorkbench({ vaultPath, intents, themes = [] }: { vaultPath: string; intents: IntentRow[]; themes?: Theme[] }) {
   // Zoom ladder, high -> low: tree (domain > theme > recurring > prompt) > recurring > all.
@@ -113,15 +113,24 @@ export function IntentsWorkbench({ vaultPath, intents, themes = [] }: { vaultPat
     for (const [dom, rows] of byDomain) {
       const dThemes = themes.filter((t) => (t.domains ?? []).some((x) => x.toLowerCase() === dom.toLowerCase()) && t.title);
       const kw = dThemes.map((t) => new Set(tokenize(`${t.title ?? ""} ${t.goal ?? ""}`)));
+      // Exact linkage: the distiller stamps prompt_ts (timestamps of the prompts
+      // that fed each theme). A prompt whose ts is claimed lands in that theme
+      // deterministically; only prompts NOT stamped fall back to keyword match
+      // (old distilled docs with no prompt_ts, or newly-added prompts).
+      const tsToTheme = new Map<number, string>();
+      for (const t of dThemes) for (const ts of (t.prompt_ts ?? [])) if (t.title) tsToTheme.set(ts, t.title);
       const buckets = new Map<string, IntentRow[]>();
       for (const t of dThemes) buckets.set(t.title!, []);
       buckets.set("Other questions", []);
       for (const r of rows) {
-        const toks = tokenize(String(r.message ?? ""));
-        let best = -1, bestScore = 0;
-        kw.forEach((set, i) => { const sc = toks.reduce((n, w) => n + (set.has(w) ? 1 : 0), 0); if (sc > bestScore) { bestScore = sc; best = i; } });
-        const key = best >= 0 && bestScore >= 1 ? dThemes[best]!.title! : "Other questions";
-        buckets.get(key)!.push(r);
+        let key: string | null = (r.ts != null && tsToTheme.has(r.ts)) ? tsToTheme.get(r.ts)! : null;
+        if (!key) {
+          const toks = tokenize(String(r.message ?? ""));
+          let best = -1, bestScore = 0;
+          kw.forEach((set, i) => { const sc = toks.reduce((n, w) => n + (set.has(w) ? 1 : 0), 0); if (sc > bestScore) { bestScore = sc; best = i; } });
+          key = best >= 0 && bestScore >= 1 ? dThemes[best]!.title! : "Other questions";
+        }
+        (buckets.get(key) ?? buckets.set(key, []).get(key)!).push(r);
       }
       const themeNodes = [...buckets.entries()].filter(([, rs]) => rs.length).map(([title, rs]) => ({ title, count: rs.length, clusters: clusterRows(rs) })).sort((a, b) => b.count - a.count);
       const flat = dThemes.length === 0;
@@ -248,7 +257,7 @@ export function IntentsWorkbench({ vaultPath, intents, themes = [] }: { vaultPat
       {view === "tree" && (
         tree.length === 0 ? <Empty text={intents.length ? "Nothing matches the current filters." : "No intents captured yet."} /> : (
           <div className="flex flex-col gap-2">
-            <p className="text-[11px] text-text-muted">The full hierarchy: each domain rolls up its themes; each theme its recurring questions; each cluster its individual prompts. Expand to drill down. Theme grouping is a best-effort match to the distilled themes above.</p>
+            <p className="text-[11px] text-text-muted">The full hierarchy: each domain rolls up its themes; each theme its recurring questions; each cluster its individual prompts. Expand to drill down. Themes nest their prompts exactly when the distiller has stamped them, else by best-effort match.</p>
             {tree.map((d) => {
               const dk = `d:${d.domain}`; const dOpen = expanded.has(dk);
               return (

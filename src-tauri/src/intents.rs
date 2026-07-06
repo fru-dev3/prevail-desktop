@@ -241,7 +241,8 @@ fn build_intents_prompt(activity: &str, existing_domains: &[String]) -> String {
     };
     format!(
         "You are Prevail's intent analyst. Below is a chronological log of the user's \
-prompts. Each line is `[domain via surface] prompt` (or just `[surface] prompt`). \
+prompts. Each line is `#N [domain via surface] prompt` (or `#N [surface] prompt`), \
+ where #N is a stable reference number for that prompt. \
 The SURFACE is the app or tool the prompt was typed in - e.g. claude (Claude Code), \
 codex, gemini, antigravity, opencode, or prevail (the Prevail desktop chat).\n\n\
 Your job is NOT to summarize the prompts. Infer the HIGH-LEVEL INTENTS behind \
@@ -256,7 +257,7 @@ DOMAIN RULES (critical - the user manages these by hand and does NOT want domain
 - Only use a domain name NOT in the list when the intent genuinely fits NO existing domain AND is itself a broad new life/work area worth tracking on its own. This should be rare. When in doubt, reuse the closest existing domain.\n\
 - Do not output two domain names that are facets of the same thing. Collapse them.\n\n\
 Return ONLY a JSON array (no prose, no markdown fences). Each element:\n\
-{{\n  \"title\": short intent name,\n  \"goal\": one sentence - what they are really trying to achieve,\n  \"underlying_need\": the deeper need behind it,\n  \"domains\": [domains it spans - prefer existing ones],\n  \"sources\": [the distinct surfaces these prompts came from, e.g. \"claude\", \"codex\", \"prevail\"],\n  \"status\": \"active\" | \"dormant\" | \"resolved\",\n  \"confidence\": 0.0-1.0,\n  \"open_questions\": [the next things to figure out],\n  \"evidence\": [2-4 short quoted snippets from the prompts that support this],\n  \"recommendations\": [concrete next actions Prevail could take or suggest]\n}}\n\n\
+{{\n  \"title\": short intent name,\n  \"goal\": one sentence - what they are really trying to achieve,\n  \"underlying_need\": the deeper need behind it,\n  \"domains\": [domains it spans - prefer existing ones],\n  \"sources\": [the distinct surfaces these prompts came from, e.g. \"claude\", \"codex\", \"prevail\"],\n  \"status\": \"active\" | \"dormant\" | \"resolved\",\n  \"confidence\": 0.0-1.0,\n  \"open_questions\": [the next things to figure out],\n  \"evidence\": [2-4 short quoted snippets from the prompts that support this],\n  \"prompt_refs\": [the #N reference numbers of EVERY prompt in the log that belongs to this intent - be inclusive; this is how prompts nest under the intent],\n  \"recommendations\": [concrete next actions Prevail could take or suggest]\n}}\n\n\
 Produce 3-8 intents, most important first. Be specific and genuinely useful; \
 never invent facts not supported by the prompts. For \"sources\", list ONLY surfaces \
 that actually appear in this intent's prompts; never invent one.\n\n\
@@ -465,7 +466,11 @@ pub(crate) async fn distill_intents_core(
         return Err("No prompts captured yet. Chat a bit, or run capture sync.".into());
     }
     // Oldest-first so the model reads the narrative in order; cap each line.
+    // Each line is numbered (#N) and we keep N -> ts, so the model can cite which
+    // prompts feed each intent (prompt_refs) and we resolve those to timestamps
+    // the desktop matches exactly (prompt_ts) - real parentage, not keyword guess.
     let mut activity = String::new();
+    let mut line_ts: Vec<i64> = Vec::new();
     for v in intents.iter().rev() {
         let dom = v.get("domain").and_then(|d| d.as_str()).unwrap_or("general");
         let surface = v.get("surface").and_then(|s| s.as_str()).unwrap_or("prevail");
@@ -473,6 +478,7 @@ pub(crate) async fn distill_intents_core(
         if msg.trim().is_empty() {
             continue;
         }
+        let ts = v.get("ts").and_then(|t| t.as_i64()).unwrap_or(0);
         let m: String = msg.chars().take(400).collect();
         // `[domain via surface]` when they differ (native ledger), else `[surface]`
         // (captured cross-tool prompts, where domain == tool == surface). Gives
@@ -488,7 +494,8 @@ pub(crate) async fn distill_intents_core(
         if !host.is_empty() {
             tag = format!("{tag} @ {host}");
         }
-        activity.push_str(&format!("[{tag}] {}\n", m.replace('\n', " ")));
+        line_ts.push(ts);
+        activity.push_str(&format!("#{} [{tag}] {}\n", line_ts.len(), m.replace('\n', " ")));
     }
     if activity.trim().is_empty() {
         return Err("No prompt text to analyze.".into());
@@ -503,7 +510,29 @@ pub(crate) async fn distill_intents_core(
     if out.trim().is_empty() {
         return Err("intent distiller produced no output".into());
     }
-    let arr = parse_intents_output(&out)?;
+    let mut arr = parse_intents_output(&out)?;
+    // Resolve each intent's prompt_refs (#N line numbers) to the timestamps of
+    // those log lines, so the desktop nests prompts under themes by exact match.
+    if let Some(items) = arr.as_array_mut() {
+        for it in items.iter_mut() {
+            let refs: Vec<i64> = it
+                .get("prompt_refs")
+                .and_then(|r| r.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|n| n.as_i64())
+                        .filter_map(|n| {
+                            let idx = (n - 1) as usize; // #N is 1-based
+                            line_ts.get(idx).copied().filter(|t| *t > 0)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            if let Some(obj) = it.as_object_mut() {
+                obj.insert("prompt_ts".into(), serde_json::json!(refs));
+            }
+        }
+    }
     let doc = serde_json::json!({
         "generated_ts": now_secs(),
         "source_count": intents.len(),
