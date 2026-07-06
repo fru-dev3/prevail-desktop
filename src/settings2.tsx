@@ -532,6 +532,9 @@ type DistilledIntent = {
   open_questions?: string[];
   evidence?: string[];
   recommendations?: string[];
+  /** Timestamps of the prompts that fed this theme (stamped by the distiller);
+   *  lets the intents tree nest prompts under themes by exact match. */
+  prompt_ts?: number[];
 };
 
 // Pretty labels for the source surfaces a distilled intent can come from. Keeps
