@@ -228,6 +228,30 @@ export function DomainContextDrawer({
       invoke<string>("read_ideal_state", { vault: vaultPath })
         .then((s) => { if (mounted) setIdealState(s || ""); })
         .catch(() => { if (mounted) setIdealState(""); });
+      // This domain's OWN ideal-state.md (its target/aim) - the most important
+      // local context, distinct from the global constitution above. For General
+      // (no domain) the global ideal already covers the vault root, so skip.
+      if (domain) {
+        invoke<string>("read_domain_ideal", { vault: vaultPath, domain })
+          .then((s) => { if (mounted) setDomainIdeal(s || ""); })
+          .catch(() => { if (mounted) setDomainIdeal(""); });
+      } else if (mounted) {
+        setDomainIdeal("");
+      }
+      // The user's own material + the task board. Read straight off disk by
+      // path (v4 first, then legacy) so absence just yields empty - no error.
+      void (async () => {
+        const tasks =
+          (await invoke<string>("read_text_file", { path: `${domainPath}/memory/tasks.md` }).catch(() => "")) ||
+          (await invoke<string>("read_text_file", { path: `${domainPath}/_tasks.md` }).catch(() => ""));
+        if (mounted) setDomainTasks(tasks || "");
+        const src: { name: string; body: string }[] = [];
+        for (const f of ["goals.md", "config.md"]) {
+          const t = await invoke<string>("read_text_file", { path: `${domainPath}/source/${f}` }).catch(() => "");
+          if (t && t.trim()) src.push({ name: `source/${f}`, body: t });
+        }
+        if (mounted) setSourceFiles(src);
+      })();
     };
     load();
     // Refresh the instant a decision/verdict is saved anywhere in the app.
@@ -238,6 +262,11 @@ export function DomainContextDrawer({
   }, [vaultPath, domain]);
 
   const [idealState, setIdealState] = useState<string>("");
+  const [domainIdeal, setDomainIdeal] = useState<string>("");
+  // The user's own source material (source/goals.md, source/config.md) and the
+  // domain's task board - real on-disk context that wasn't surfaced here before.
+  const [sourceFiles, setSourceFiles] = useState<{ name: string; body: string }[]>([]);
+  const [domainTasks, setDomainTasks] = useState<string>("");
   // Clicking a file/section opens it in the LEFT canvas pane (owned by App), not
   // inline here - so the drawer stays a compact index and the content gets room.
   const openCanvas = (title: string, body: string) => {
@@ -408,6 +437,40 @@ export function DomainContextDrawer({
           {(() => { const I = domain ? domainIcon(domain) : MessageSquare; return I ? <I className="h-3.5 w-3.5 text-accent" /> : <span className="text-accent">◆</span>; })()}
           {domain ? titleCase(domain) : "General"}
         </div>
+        {/* This domain's own ideal-state.md - its target/aim. The single most
+            important local context, so it leads the domain section. Only shown
+            for a real domain; General's ideal IS the global one above. */}
+        {domain && (
+          <Section keyName="domainideal" title="Ideal" file="ideal-state.md" count={domainIdeal.trim() ? 1 : undefined} body={
+            domainIdeal.trim()
+              ? <CtxRow desc={`${titleCase(domain)}'s target (${titleCase(domain)}/ideal-state.md) - what a thriving ${titleCase(domain)} looks like.`} onView={() => openCanvas(`${titleCase(domain)} ideal`, domainIdeal)} onUse={() => onInjectContext(domainIdeal, `${titleCase(domain)} · ideal`)} />
+              : <div className="text-[11px] text-text-muted">Not set. Draft it from the domain's Ideal editor.</div>
+          } />
+        )}
+        {/* The user's own material (source/) - goals and config they wrote. Real
+            grounding context, surfaced per file so the label matches the path. */}
+        {sourceFiles.length > 0 && (
+          <Section keyName="source" title="Source" file="source/" count={sourceFiles.length} body={
+            <ul className="flex flex-col gap-1.5">
+              {sourceFiles.map((f) => (
+                <li key={f.name}>
+                  <CtxRow
+                    desc={`Your own material (${f.name}).`}
+                    onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} · ${f.name}`, f.body)}
+                    onUse={() => onInjectContext(f.body, `${domain ? titleCase(domain) : "General"} · ${f.name}`)}
+                  />
+                </li>
+              ))}
+            </ul>
+          } />
+        )}
+        {/* The task board - what's open in this domain. Injectable as context so a
+            chat can reason over the current workload. */}
+        {domainTasks.trim() && (
+          <Section keyName="tasks" title="Tasks" file={vf("memory/tasks.md", "_tasks.md")} body={
+            <CtxRow desc="The domain's task board (open and done items)." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} tasks`, domainTasks)} onUse={() => onInjectContext(domainTasks, `${domain ? titleCase(domain) : "General"} · tasks`)} />
+          } />
+        )}
         <Section keyName="memory" title="Memory" file={vf("memory/memory.md", "_memory.md")} action={<RebuildStateButton vaultPath={vaultPath} domain={domain} field="memory" />} body={
           memory.trim()
             ? <CtxRow desc="Distilled long-term memory." onView={() => openCanvas(`${domain ? titleCase(domain) : "General"} memory`, memory)} onUse={() => onInjectContext(memory, `${domain ? titleCase(domain) : "General"} · memory`)} />
