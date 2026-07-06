@@ -822,6 +822,7 @@ mod usage_tests {
             output_tokens: out,
             cost_usd: cost,
             ok,
+            surface: None,
         }
     }
 
