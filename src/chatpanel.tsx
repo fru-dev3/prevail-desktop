@@ -77,6 +77,19 @@ function ScoreDimRow({ label, dim }: { label: string; dim: { score: number; deta
   );
 }
 
+// Manually attached chat context (a dragged app, a $-mentioned domain/app, a
+// pinned "summary so far") is component state, so it would vanish the moment
+// ChatPanel unmounts, e.g. when you switch to another top-level tab and come
+// back (the panel is `{tab === "chat" && <ChatPanel/>}`, so it remounts fresh).
+// Cache the MANUAL entries plus their app identity bindings per chat scope at
+// module scope, so returning to the same chat restores them. "auto:" and
+// "auto-app:" contexts are deliberately NOT cached: their own effects re-derive
+// them on mount, so caching would double them up.
+type PrimedEntry = { label: string; body: string };
+type PrimedBinding = { id: string; account: string };
+const primedContextCache = new Map<string, { ctx: PrimedEntry[]; bindings: Record<string, PrimedBinding> }>();
+const isAutoContextLabel = (label: string) => label.startsWith("auto:") || label.startsWith("auto-app:");
+
 export function ChatPanel({
   domain,
   domainPath,
@@ -373,14 +386,33 @@ export function ChatPanel({
   // Items can be "used in chat" to inject as prompt context.
   const [contextOpen, setContextOpen] = useState<boolean>(() => lsGet("prevail.contextOpen") === "1");
   useEffect(() => { lsSet("prevail.contextOpen", contextOpen ? "1" : "0"); }, [contextOpen]);
-  const [primedContext, setPrimedContext] = useState<{ label: string; body: string }[]>([]);
+  // Restore any manual context cached for this scope (survives a tab-switch
+  // remount). The scope key mirrors the parent's mount key (tDomain, else General).
+  const primedScope = tDomain ?? "general";
+  const [primedContext, setPrimedContext] = useState<{ label: string; body: string }[]>(
+    () => primedContextCache.get(primedScope)?.ctx ?? [],
+  );
   // Identity bindings of ATTACHED apps, keyed by their primedContext label
   // ("app: Gmail Personal" -> { id, account }). An app instance bound to an
   // account (manifest.account) carries that identity into the turn - the
   // generic "an app = a connector + an identity" contract. Entries whose label
   // is no longer in primedContext are simply ignored at send time, so removing
   // the chip detaches the identity too.
-  const attachedBindingsRef = useRef<Record<string, { id: string; account: string }>>({});
+  const attachedBindingsRef = useRef<Record<string, { id: string; account: string }>>(
+    { ...(primedContextCache.get(primedScope)?.bindings ?? {}) },
+  );
+  // Persist the manual context + its bindings whenever they change, so an
+  // unmount (tab switch) does not lose a dragged-in app. Auto contexts are
+  // excluded (re-derived on mount). Bindings are pruned to labels still present.
+  useEffect(() => {
+    const ctx = primedContext.filter((c) => !isAutoContextLabel(c.label));
+    const bindings: Record<string, { id: string; account: string }> = {};
+    for (const c of ctx) {
+      const b = attachedBindingsRef.current[c.label];
+      if (b) bindings[c.label] = b;
+    }
+    primedContextCache.set(primedScope, { ctx, bindings });
+  }, [primedContext, primedScope]);
   // B2: surface attach failures on-screen instead of swallowing them, so a
   // silent "$domain didn't attach" becomes a visible, diagnosable message.
   const [attachErr, setAttachErr] = useState<string | null>(null);
