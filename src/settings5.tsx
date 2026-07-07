@@ -1330,11 +1330,11 @@ export function AboutSection({ vaultPath }: { vaultPath: string }) {
         <Row label="Official website" href="https://prevail.sh" />
       </div>
 
-      {/* Alpha / liability disclaimer */}
+      {/* Beta / liability disclaimer */}
       <div className="mt-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-sm">
-        <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Alpha software</div>
+        <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-text-primary">Beta software</div>
         <p className="text-xs leading-relaxed text-text-secondary">
-          Prevail is an early, experimental alpha released for demonstration and testing. It is provided "as is",
+          Prevail is a beta release. It is provided "as is",
           without warranty of any kind, express or implied, and you use it at your own risk. The authors are not liable
           for any data loss, costs, or damages arising from its use. It runs third-party AI tools and, unless Bunker
           Mode is on, may send data to cloud providers. Always review anything important yourself. Feedback and bug

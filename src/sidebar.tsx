@@ -1214,19 +1214,19 @@ export function Sidebar({
         </div>
       )}
       {!collapsed && (
-        // Slim one-line footer. The Alpha badge IS the feedback link (Prevail is
-        // a research project; the tooltip carries the use-at-your-own-risk
-        // notice), and the theme toggle + Processes icon are kept tiny on the
+        // Slim one-line footer. The Beta badge IS the feedback link (the tooltip
+        // carries the use-at-your-own-risk notice), and the theme toggle +
+        // Processes icon are kept tiny on the
         // right so this corner stays minimal rather than a stack of status cards.
         <div className="flex shrink-0 items-center gap-2 border-t border-border-subtle px-3 py-2">
           <a
             href="https://github.com/fru-dev3/prevail-desktop/issues/new"
             target="_blank"
             rel="noreferrer"
-            title="Alpha: Prevail is an early research project, provided as-is with no warranty: use at your own risk. Click to send feedback or report a bug."
+            title="Beta: Prevail is a beta release, provided as-is with no warranty: use at your own risk. Click to send feedback or report a bug."
             className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-accent transition-colors hover:bg-accent hover:text-background"
           >
-            <span className="text-[10px] leading-none">◆</span> Alpha
+            <span className="text-[10px] leading-none">◆</span> Beta
           </a>
           <div className="flex-1" />
           <button
