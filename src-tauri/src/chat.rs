@@ -83,19 +83,38 @@ fn vault_lock_preamble() -> String {
      If a request would require touching files outside the vault, REFUSE and state that Vault Lock is enabled (turn it off in Settings to allow full-machine access).\n\n---\n\n".to_string()
 }
 
+/// The exact install one-liners the runtime cards may run, mirrored from the
+/// frontend RUNTIME_META `cmd` fields. `open_in_terminal` accepts ONLY a string
+/// from this set — the Rust side no longer trusts the renderer's claim that a
+/// command "came from the trusted table". Adding a runtime to the frontend means
+/// adding its command here too; an unmirrored command fails closed (refused),
+/// never executed. This is what stops an XSS from running arbitrary shell in
+/// Terminal via this command.
+const ALLOWED_INSTALL_COMMANDS: &[&str] = &[
+    "npm install -g @anthropic-ai/claude-code",
+    "npm install -g @openai/codex",
+    "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+    "brew install ollama",
+    "brew install --cask lm-studio",
+    "pip install mlx-lm",
+    "brew install opencode",
+    "curl -fsSL https://openclaw.ai/install.sh | bash",
+    "npm install -g @earendil-works/pi-coding-agent",
+];
+
 /// Open Terminal.app and run a one-line install command, so a runtime setup is
 /// one click but still fully transparent: the user sees the exact command run,
 /// can authenticate (sudo/brew), and confirm — never a silent background install.
-/// The command originates from our own RUNTIME_META table (trusted), not user
-/// input. macOS-only (the app ships on macOS).
+/// The command must be one of ALLOWED_INSTALL_COMMANDS; anything else is refused
+/// server-side. macOS-only (the app ships on macOS).
 #[tauri::command]
 pub(crate) fn open_in_terminal(command: String) -> Result<(), String> {
     let cmd = command.trim();
     if cmd.is_empty() {
         return Err("empty command".into());
     }
-    if cmd.len() > 500 {
-        return Err("command too long".into());
+    if !ALLOWED_INSTALL_COMMANDS.contains(&cmd) {
+        return Err("refused: command is not an approved runtime install command".into());
     }
     // Escape for an AppleScript string literal.
     let escaped = cmd.replace('\\', "\\\\").replace('"', "\\\"");
