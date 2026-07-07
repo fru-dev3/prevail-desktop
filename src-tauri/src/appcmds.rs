@@ -64,21 +64,44 @@ pub(crate) fn read_file(path: String) -> Result<String, String> {
 // followed.
 #[tauri::command]
 pub(crate) fn log_fatal(msg: String) {
-    use std::os::unix::fs::OpenOptionsExt;
-    let Ok(home) = std::env::var("HOME") else { return };
-    let dir = Path::new(&home).join("Library/Application Support/sh.prevail.desktop");
+    let dir = fatal_log_dir();
     let _ = fs::create_dir_all(&dir);
     let path = dir.join("prevail-fatal.log");
-    if let Ok(mut f) = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&path)
+    // On Unix, open with O_NOFOLLOW so a pre-positioned symlink at the target is
+    // refused rather than followed. Windows uses a per-user LOCALAPPDATA dir
+    // (not world-writable), so a plain write is sufficient there.
+    #[cfg(unix)]
     {
         use std::io::Write;
-        let _ = f.write_all(msg.as_bytes());
+        use std::os::unix::fs::OpenOptionsExt;
+        if let Ok(mut f) = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&path)
+        {
+            let _ = f.write_all(msg.as_bytes());
+        }
     }
+    #[cfg(not(unix))]
+    {
+        let _ = fs::write(&path, msg.as_bytes());
+    }
+}
+
+// Per-user directory for the fatal-crash log. Not a world-shared /tmp path.
+fn fatal_log_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            return Path::new(&local).join("sh.prevail.desktop");
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return Path::new(&home).join("Library/Application Support/sh.prevail.desktop");
+    }
+    std::env::temp_dir()
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
