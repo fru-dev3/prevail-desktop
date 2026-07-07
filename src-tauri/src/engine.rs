@@ -501,10 +501,14 @@ fn apply_engine_env(
         .env("USER", user)
         .env("LOGNAME", logname);
     // Vault Lock: orthogonal to Bunker. Tell the engine to keep all file access
-    // inside the vault directory.
-    if crate::vault_lock::vault_lock_enabled() {
-        cmd.env("PREVAIL_VAULT_LOCK", "1");
-    }
+    // inside the vault directory. Pass the value EXPLICITLY in both directions:
+    // the engine now defaults to LOCKED when the signal is absent (so its
+    // standalone daemons fail closed), so when the user has turned Vault Lock OFF
+    // we must send "0" — otherwise the engine would re-lock against their choice.
+    cmd.env(
+        "PREVAIL_VAULT_LOCK",
+        if crate::vault_lock::vault_lock_enabled() { "1" } else { "0" },
+    );
     if crate::bunker::bunker_enabled() {
         cmd.env("PREVAIL_BUNKER", "1");
     } else {
@@ -2063,9 +2067,12 @@ struct SealedBlob {
 /// 401 "missing authentication header" despite a configured key.
 pub(crate) fn provider_env_pairs() -> Vec<(String, String)> {
     let mut out = Vec::new();
-    if crate::vault_lock::vault_lock_enabled() {
-        out.push(("PREVAIL_VAULT_LOCK".to_string(), "1".to_string()));
-    }
+    // Explicit in both directions — the engine defaults to LOCKED when unset, so
+    // an OFF choice must be sent as "0" (see the run_engine spawn site).
+    out.push((
+        "PREVAIL_VAULT_LOCK".to_string(),
+        if crate::vault_lock::vault_lock_enabled() { "1" } else { "0" }.to_string(),
+    ));
     if crate::bunker::bunker_enabled() {
         out.push(("PREVAIL_BUNKER".to_string(), "1".to_string()));
         return out;

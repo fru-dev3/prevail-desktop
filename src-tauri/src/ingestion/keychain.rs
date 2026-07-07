@@ -40,8 +40,12 @@ fn run(args: &[&str], stdin: Option<&[u8]>) -> Result<std::process::Output, Stri
     Ok(out)
 }
 
-/// Add (or replace) a generic-password entry.
+/// Add (or replace) a generic-password entry. The secret is fed on STDIN, not
+/// as a `-w <secret>` argv (which is briefly visible to any local process via
+/// `ps`). `security` reads the password from stdin when `-w` is given with no
+/// value.
 pub fn set(service: &str, account: &str, secret: &str) -> Result<(), String> {
+    let payload = format!("{secret}\n");
     let out = run(
         &[
             "add-generic-password",
@@ -50,10 +54,9 @@ pub fn set(service: &str, account: &str, secret: &str) -> Result<(), String> {
             service,
             "-a",
             account,
-            "-w",
-            secret,
+            "-w", // no value: read the password from stdin
         ],
-        None,
+        Some(payload.as_bytes()),
     )?;
     if out.status.success() {
         Ok(())

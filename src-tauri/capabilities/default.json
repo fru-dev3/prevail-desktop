@@ -20,24 +20,6 @@
     "notification:allow-notify",
     "process:allow-restart",
     "global-shortcut:default",
-    "deep-link:default",
-    "shell:default",
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        { "name": "which", "cmd": "which", "args": true },
-        { "name": "open", "cmd": "open", "args": true },
-        { "name": "xdg-open", "cmd": "xdg-open", "args": true }
-      ]
-    },
-    {
-      "identifier": "shell:allow-spawn",
-      "allow": [
-        { "name": "claude", "cmd": "claude", "args": true },
-        { "name": "codex", "cmd": "codex", "args": true },
-        { "name": "agy", "cmd": "agy", "args": true },
-        { "name": "ollama", "cmd": "ollama", "args": true }
-      ]
-    }
+    "deep-link:default"
   ]
 }

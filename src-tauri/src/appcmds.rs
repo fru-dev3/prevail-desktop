@@ -14,16 +14,71 @@ use crate::paths::safe_domain_subdir;
 use crate::read_to_string_retry;
 use crate::vault::Domain;
 
+/// Defense-in-depth for the generic read primitive, mirroring
+/// `reject_sensitive_write`. `read_file`/`read_text_file` took an arbitrary
+/// absolute path with no validation while the write side was guarded — an
+/// asymmetry an XSS (none today) would exploit to exfiltrate credentials. We
+/// refuse the classic secret-read targets (SSH/cloud creds, browser cookie and
+/// login stores, the login keychain, shell rc files). Vault files, the app-
+/// support tree, and ordinary Documents reads are unaffected.
+fn reject_sensitive_read(path: &str) -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let blocked_suffixes = [
+        "/.zshrc", "/.zshenv", "/.zprofile", "/.bashrc", "/.bash_profile",
+        "/.profile", "/.netrc", "/.npmrc",
+    ];
+    let blocked_dirs = [
+        format!("{home}/.ssh/"),
+        format!("{home}/.aws/"),
+        format!("{home}/.config/gcloud/"),
+        format!("{home}/.gnupg/"),
+        format!("{home}/Library/Keychains/"),
+        format!("{home}/Library/Cookies/"),
+        format!("{home}/Library/Application Support/Google/Chrome/"),
+        format!("{home}/Library/Application Support/Firefox/"),
+        format!("{home}/Library/Application Support/BraveSoftware/"),
+        format!("{home}/Library/Application Support/com.apple.TCC/"),
+    ];
+    let lower = path.to_lowercase();
+    if blocked_suffixes.iter().any(|s| path.ends_with(s))
+        || blocked_dirs.iter().any(|d| path.starts_with(d.as_str()))
+        || lower.contains("/cookies.sqlite")
+        || lower.contains("/login data")
+    {
+        return Err("refused: reading from a sensitive credential location is not allowed".into());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub(crate) fn read_file(path: String) -> Result<String, String> {
+    reject_sensitive_read(&path)?;
     read_to_string_retry(&path).map_err(|e| format!("read {}: {}", path, e))
 }
 
 // Diagnostic: the frontend's fatal-error handler writes the crash here so
-// production render failures (blank window) are inspectable from disk.
+// production render failures (blank window) are inspectable from disk. Written
+// into the per-user app-support tree (not a world-shared, predictable /tmp path
+// where a pre-positioned symlink could redirect the write), and opened with
+// O_NOFOLLOW so an existing symlink at the target is refused rather than
+// followed.
 #[tauri::command]
 pub(crate) fn log_fatal(msg: String) {
-    let _ = fs::write("/tmp/prevail-fatal.log", msg);
+    use std::os::unix::fs::OpenOptionsExt;
+    let Ok(home) = std::env::var("HOME") else { return };
+    let dir = Path::new(&home).join("Library/Application Support/sh.prevail.desktop");
+    let _ = fs::create_dir_all(&dir);
+    let path = dir.join("prevail-fatal.log");
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = f.write_all(msg.as_bytes());
+    }
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -388,6 +443,7 @@ pub(crate) fn write_text_file(path: String, contents: String) -> Result<(), Stri
 }
 #[tauri::command]
 pub(crate) fn read_text_file(path: String) -> Result<String, String> {
+    reject_sensitive_read(&path)?;
     read_to_string_retry(&path).map_err(|e| format!("read {path}: {e}"))
 }
 
