@@ -49,7 +49,7 @@ Prefer to click? **[Download the `.dmg`](https://github.com/fru-dev3/prevail-des
 
 **[Download the installer](https://github.com/fru-dev3/prevail-desktop/releases/latest/download/Prevail-windows-x64-setup.exe)** and run it.
 
-&nbsp;·&nbsp; [prevail.sh](https://prevail.sh) &nbsp;·&nbsp; [all releases](https://github.com/fru-dev3/prevail-desktop/releases)
+&nbsp;·&nbsp; [prevail.sh](https://prevail.sh) &nbsp;·&nbsp; [all releases](https://github.com/fru-dev3/prevail-desktop/releases) &nbsp;·&nbsp; [questions & help](https://github.com/fru-dev3/prevail-desktop/discussions)
 
 ## Why Prevail
 
