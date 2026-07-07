@@ -66,7 +66,7 @@ Prefer to click? **[Download the `.dmg`](https://github.com/fru-dev3/prevail-des
   - **Run with agent**: on any Work-board task, hand it to a harness agent; it streams progress, then drops its result back as a comment and moves the task to Review.
   - **Loops on an agent**: give any automation a per-loop *executor* so a recurring loop runs through the agent of your choice.
 - **Smarter runtime detection**: *Re-check* now actually re-detects (a repaired install recovers without a restart), and the Runtimes list tells **"won't run" (broken)** apart from **"not installed."**
-- **Calmer sidebar**: the benchmark/backup/process strips collapse into one **Processes** icon + modal; the Work/Editor switch goes full-width and the footer slims to Alpha + a tiny theme toggle.
+- **Calmer sidebar**: the benchmark/backup/process strips collapse into one **Processes** icon + modal; the Work/Editor switch goes full-width and the footer slims to Beta + a tiny theme toggle.
 
 ## Key features
 
