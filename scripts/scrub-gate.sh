@@ -21,11 +21,13 @@ fi
 # Real-identity fingerprints that must never appear in the synthetic demo vault.
 # (Scoped to the SHIPPED vault only — release tooling/docs legitimately carry the
 # Apple Developer ID, so we do not scan those here.)
+# Name patterns are base64-encoded so this script itself never contains the
+# strings it exists to keep out of the tree (code-search finds plaintext).
 PATTERNS=(
   'fru\.dev3'       # real email local-part
-  'Fru Nde'         # real legal name (also the Developer ID — never in vault data)
-  'Fru Louis'       # legacy real-name variant
-  '/Users/[a-z]'    # any real home-dir path (frunde or otherwise) — runtime leak
+  "$(printf 'RnJ1IE5kZQ==' | base64 -d)"   # real legal name (also the Developer ID — never in vault data)
+  "$(printf 'RnJ1IExvdWlz' | base64 -d)"   # legacy real-name variant
+  '/Users/[a-z]'    # any real home-dir path — runtime leak
 )
 
 # Synthetic personas + placeholders that ARE allowed in the demo vault.
