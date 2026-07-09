@@ -161,24 +161,25 @@ export const MODELS: Record<string, ModelPick[]> = {
     { id: "haiku",           label: "Haiku 4.5", blurb: "fast + cheap", resolved: "claude-haiku-4-5" },
   ],
   codex: [
-    // gpt-5.5 is the ONLY model Codex accepts on a ChatGPT-login
-    // account — every gpt-5 / gpt-5-codex / gpt-5-mini / o-series
-    // variant returns 400 "model not supported when using Codex with a
-    // ChatGPT account". Verified empirically against `codex exec`.
-    // GPT-5.6 (sol/terra/luna, GA on the OpenAI API + OpenRouter as of
-    // 2026-07-09) is NOT yet accepted here either: gpt-5.6-sol / gpt-5.6 /
-    // gpt-5.6-codex all return the same 400 on a ChatGPT-login account
-    // (verified via `codex exec` 2026-07-09). Add a 5.6 entry here only once
-    // Codex accepts it; until then 5.6 is offered via OpenRouter / a direct
-    // OpenAI key below. gpt-5.5 stays the Codex default.
-    // The "@<effort>" suffix is parsed in cli_args() (lib.rs) into
-    // `-c model_reasoning_effort=<effort>`; minimal effort 400s, so
-    // only default / medium / high are offered. All three are tested
-    // working.
-    { id: "auto",           label: "Auto",             blurb: "route to the best model" },
-    { id: "gpt-5.5",        label: "GPT-5.5",          blurb: "flagship · fast (default)" },
-    { id: "gpt-5.5@medium", label: "GPT-5.5 (medium)", blurb: "balanced reasoning" },
-    { id: "gpt-5.5@high",   label: "GPT-5.5 (high)",   blurb: "max reasoning · slower" },
+    // GPT-5.6 family (GA 2026-07-09): three tiers — Sol (flagship), Terra
+    // (balanced/cheaper), Luna (fastest/cheapest) — each accepting a reasoning
+    // effort. The "@<effort>" suffix is parsed in cli_args() (lib.rs) into
+    // `-c model_reasoning_effort=<effort>`; minimal effort 400s, so only
+    // default / medium / high are offered.
+    // NOTE on Codex-with-ChatGPT-login: which models this account accepts is
+    // ACCOUNT-SPECIFIC. 5.6 is confirmed working on the production Codex login;
+    // some accounts return 400 "model not supported" until the rollout reaches
+    // them (older codex CLIs / lower plan tiers). gpt-5.5 is kept as a fallback
+    // for those accounts.
+    { id: "auto",             label: "Auto",              blurb: "route to the best model" },
+    { id: "gpt-5.6-sol",      label: "GPT-5.6 Sol",       blurb: "flagship · fast (default)" },
+    { id: "gpt-5.6-sol@medium", label: "GPT-5.6 Sol (medium)", blurb: "flagship · balanced reasoning" },
+    { id: "gpt-5.6-sol@high", label: "GPT-5.6 Sol (high)", blurb: "flagship · max reasoning" },
+    { id: "gpt-5.6-terra",    label: "GPT-5.6 Terra",     blurb: "balanced · lower cost" },
+    { id: "gpt-5.6-terra@high", label: "GPT-5.6 Terra (high)", blurb: "balanced · more reasoning" },
+    { id: "gpt-5.6-luna",     label: "GPT-5.6 Luna",      blurb: "fastest · cheapest" },
+    { id: "gpt-5.5",          label: "GPT-5.5",           blurb: "previous flagship (fallback)" },
+    { id: "gpt-5.5@high",     label: "GPT-5.5 (high)",    blurb: "previous · max reasoning" },
   ],
   antigravity: [
     { id: "auto",                         label: "Auto",                         blurb: "route to the best model" },
