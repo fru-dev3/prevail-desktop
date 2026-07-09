@@ -165,6 +165,12 @@ export const MODELS: Record<string, ModelPick[]> = {
     // account — every gpt-5 / gpt-5-codex / gpt-5-mini / o-series
     // variant returns 400 "model not supported when using Codex with a
     // ChatGPT account". Verified empirically against `codex exec`.
+    // GPT-5.6 (sol/terra/luna, GA on the OpenAI API + OpenRouter as of
+    // 2026-07-09) is NOT yet accepted here either: gpt-5.6-sol / gpt-5.6 /
+    // gpt-5.6-codex all return the same 400 on a ChatGPT-login account
+    // (verified via `codex exec` 2026-07-09). Add a 5.6 entry here only once
+    // Codex accepts it; until then 5.6 is offered via OpenRouter / a direct
+    // OpenAI key below. gpt-5.5 stays the Codex default.
     // The "@<effort>" suffix is parsed in cli_args() (lib.rs) into
     // `-c model_reasoning_effort=<effort>`; minimal effort 400s, so
     // only default / medium / high are offered. All three are tested
@@ -194,6 +200,9 @@ export const MODELS: Record<string, ModelPick[]> = {
   openrouter: [
     { id: "anthropic/claude-opus-4.1",       label: "Claude Opus 4.1",   blurb: "via OpenRouter" },
     { id: "anthropic/claude-sonnet-4.5",     label: "Claude Sonnet 4.5", blurb: "via OpenRouter" },
+    { id: "openai/gpt-5.6-sol",              label: "GPT-5.6 Sol",       blurb: "flagship · via OpenRouter" },
+    { id: "openai/gpt-5.6-terra",            label: "GPT-5.6 Terra",     blurb: "balanced · via OpenRouter" },
+    { id: "openai/gpt-5.6-luna",             label: "GPT-5.6 Luna",      blurb: "fast + cheap · via OpenRouter" },
     { id: "openai/gpt-5.1",                  label: "GPT-5.1",           blurb: "via OpenRouter" },
     { id: "google/gemini-2.5-pro",           label: "Gemini 2.5 Pro",    blurb: "via OpenRouter" },
     { id: "x-ai/grok-4",                     label: "Grok 4",            blurb: "via OpenRouter" },
