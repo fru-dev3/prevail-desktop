@@ -98,6 +98,14 @@ pub(crate) fn machine_hostname() -> String {
     .clone()
 }
 
+/// This machine's hostname, for the Map panel to stamp its auth snapshot
+/// ("as of <time> on <host>") - auth state is machine-local, so the report
+/// must say which machine it reflects.
+#[tauri::command]
+pub fn machine_host() -> String {
+    machine_hostname()
+}
+
 /// I6: read back the intents ledger so the desktop can surface it (newest
 /// first). Each line is an "intent" record written by `intent_append` the
 /// instant a chat is sent - what the user asked + the prefs in effect.

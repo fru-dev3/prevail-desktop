@@ -23,6 +23,7 @@ const WorkPanel = lazy(() => import("./workpanel").then((m) => ({ default: m.Wor
 const BenchmarkPanel = lazy(() => import("./benchpanel").then((m) => ({ default: m.BenchmarkPanel })));
 const RetrospectPanel = lazy(() => import("./retrospectpanel").then((m) => ({ default: m.RetrospectPanel })));
 const ToolsPanel = lazy(() => import("./toolspanel").then((m) => ({ default: m.ToolsPanel })));
+const MapPanel = lazy(() => import("./mappanel").then((m) => ({ default: m.MapPanel })));
 import { Sidebar } from "./sidebar";
 import { useAppearance, useFrameworkLens } from "./hooks";
 import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
@@ -136,6 +137,7 @@ import {
   CalendarDays,
   PanelLeft,
   Compass,
+  Waypoints,
   ShieldCheck,
   Power,
   Briefcase,
@@ -1850,6 +1852,15 @@ export default function App() {
                   >
                     <span className="text-[12px] leading-none">⛭</span> Tools
                   </button>
+                  <button
+                    onClick={() => setTab("map")}
+                    title="Map: every domain's tool stack and how agent-operable it is"
+                    className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
+                      tab === "map" ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-accent"
+                    }`}
+                  >
+                    <Waypoints className="h-3.5 w-3.5" /> Map
+                  </button>
                 </>
               )}
               <DomainActionsMenu
@@ -1981,6 +1992,11 @@ export default function App() {
             {tab === "tools" && (
               <div className="h-full">
                 <ToolsPanel />
+              </div>
+            )}
+            {tab === "map" && (
+              <div className="h-full">
+                <MapPanel vaultPath={vaultPath} />
               </div>
             )}
             </Suspense>

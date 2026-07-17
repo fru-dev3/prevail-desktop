@@ -395,6 +395,7 @@ pub fn run() {
             usage::usage_entries,
             usage::usage_summary_domain,
             usage::engine_budget_status,
+            intents::machine_host,
             intents::intent_append,
             intents::intents_read,
             intents::intents_read_all,
