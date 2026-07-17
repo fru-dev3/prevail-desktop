@@ -19,7 +19,7 @@
 //   api        no MCP, but a scriptable API exists
 //   research   a verified research-add: recommended, not yet adopted
 //   browser    browser automation / manual web only
-//   hardware   a physical device (excluded from the agency score)
+//   hardware   a physical device (excluded from the operability score)
 //   gap        missing entirely (a hole in coverage; subtracts)
 //   broken     was wired, now failing (expired token, exiting vendor)
 export type ToolStatus =
@@ -84,8 +84,9 @@ export interface SeedStack {
   tools: SeedTool[];
 }
 
-// The 12 best-practice stacks. Transcribed from the approved agency-map
-// prototype; each tool carries the status the prototype assigned.
+// The best-practice stacks. The first 12 are transcribed from the approved Map
+// prototype; the rest are canonical small stacks so no domain shows up blank.
+// Keep each SMALL - the most important tools for that domain, not a flood.
 export const SEED_STACKS: SeedStack[] = [
   {
     id: "content",
@@ -304,6 +305,157 @@ export const SEED_STACKS: SeedStack[] = [
       { name: "arXiv", status: "api" },
       { name: "Intel loop", status: "api", note: "to stand up" },
       { name: "Readwise Reader", status: "browser", note: "proposed" },
+    ],
+  },
+  {
+    id: "tax",
+    label: "Tax",
+    categories: ["tax", "taxes"],
+    goal: "File on time across W2 + entities + rentals, minimize surprises, keep records clean.",
+    tools: [
+      { name: "Tax accountant", status: "browser", note: "tax filing" },
+      { name: "TurboTax", status: "browser" },
+      { name: "IRS.gov", status: "browser", note: "payments, transcripts, Direct File" },
+      { name: "MN Dept of Revenue", status: "browser" },
+      { name: "Tax documents folder", status: "api", note: "vault convention: one folder per tax year" },
+    ],
+  },
+  {
+    id: "productivity",
+    label: "Productivity",
+    categories: ["productivity"],
+    goal: "One trusted system for tasks, notes, and time so nothing is dropped.",
+    tools: [
+      { name: "Google Calendar", status: "connected", identity: "user@example.com" },
+      { name: "Notion", status: "api" },
+      { name: "Obsidian", status: "api", note: "local markdown notes" },
+      { name: "Todoist", status: "api" },
+      { name: "Raycast", status: "cli" },
+    ],
+  },
+  {
+    id: "records",
+    label: "Records",
+    categories: ["records"],
+    goal: "Every important document filed, searchable, and backed up.",
+    tools: [
+      { name: "Google Drive", status: "connected", identity: "user@example.com" },
+      { name: "1Password", status: "cli", note: "credentials + secure documents" },
+      { name: "Dropbox", status: "api" },
+      { name: "Document index", status: "api", note: "vault convention" },
+    ],
+  },
+  {
+    id: "benefits",
+    label: "Benefits",
+    categories: ["benefits"],
+    goal: "Get full value from employer + account benefits; nothing left on the table.",
+    tools: [
+      { name: "Fidelity NetBenefits", status: "browser", note: "401k / equity" },
+      { name: "HSA portal", status: "browser" },
+      { name: "Employer HR portal", status: "browser" },
+      { name: "Open enrollment tracker", status: "api", note: "vault convention: annual" },
+    ],
+  },
+  {
+    id: "homestead",
+    label: "Homestead",
+    categories: ["homestead"],
+    goal: "Keep the home maintained, inventoried, and service providers on call.",
+    tools: [
+      { name: "Home maintenance schedule", status: "api", note: "vault convention: seasonal" },
+      { name: "Home inventory", status: "api", note: "for insurance claims" },
+      { name: "Thumbtack", status: "browser", note: "service providers" },
+      { name: "HomeZada", status: "browser" },
+    ],
+  },
+  {
+    id: "hunting",
+    label: "Hunting",
+    categories: ["hunting"],
+    goal: "Plan legal, safe, well-scouted trips with licenses and conditions in hand.",
+    tools: [
+      { name: "onX Hunt", status: "browser", note: "maps + property boundaries" },
+      { name: "MN DNR licensing", status: "browser", note: "licenses + regulations" },
+      { name: "HuntStand", status: "browser" },
+      { name: "Weather (NWS)", status: "api" },
+    ],
+  },
+  {
+    id: "civic",
+    label: "Civic",
+    categories: ["civic"],
+    goal: "Stay registered, informed, and engaged with local and national civic life.",
+    tools: [
+      { name: "Representatives lookup", status: "api", note: "USA.gov / Google Civic API" },
+      { name: "Voter registration", status: "browser" },
+      { name: "Local city/county portal", status: "browser" },
+    ],
+  },
+  {
+    id: "faith",
+    label: "Faith",
+    categories: ["faith"],
+    goal: "A steady rhythm of study, prayer, and reflection.",
+    tools: [
+      { name: "YouVersion Bible", status: "api", note: "reading plans" },
+      { name: "Blue Letter Bible", status: "api", note: "study tools" },
+      { name: "Reflection journal", status: "api", note: "vault convention" },
+    ],
+  },
+  {
+    id: "growth",
+    label: "Growth",
+    categories: ["growth"],
+    goal: "Deliberate personal growth: habits, reading, and reflection that compound.",
+    tools: [
+      { name: "Readwise", status: "browser", note: "highlights + spaced review" },
+      { name: "Headspace", status: "browser" },
+      { name: "Habit tracker", status: "browser" },
+      { name: "Growth journal", status: "api", note: "vault convention" },
+    ],
+  },
+  {
+    id: "time",
+    label: "Time",
+    categories: ["time"],
+    goal: "Protect attention and see where the hours actually go.",
+    tools: [
+      { name: "Google Calendar", status: "connected", identity: "user@example.com" },
+      { name: "Toggl Track", status: "api", note: "time tracking" },
+      { name: "RescueTime", status: "api", note: "automatic attention log" },
+    ],
+  },
+  {
+    id: "vision",
+    label: "Vision",
+    categories: ["vision"],
+    goal: "A clear, revisited picture of where life is headed.",
+    tools: [
+      { name: "Vision + goals doc", status: "api", note: "vault convention: the north star" },
+      { name: "Annual review", status: "api", note: "vault convention" },
+    ],
+  },
+  {
+    id: "dreams",
+    label: "Dreams",
+    categories: ["dreams"],
+    goal: "Capture aspirations so they turn into plans, not just wishes.",
+    tools: [
+      { name: "Bucket list", status: "api", note: "vault convention" },
+      { name: "Ideas journal", status: "api", note: "vault convention" },
+    ],
+  },
+  {
+    id: "general",
+    label: "General",
+    categories: ["general"],
+    goal: "The everyday core every domain leans on.",
+    tools: [
+      { name: "Gmail", status: "connected", identity: "user@example.com" },
+      { name: "Google Calendar", status: "connected", identity: "user@example.com" },
+      { name: "Google Drive", status: "connected", identity: "user@example.com" },
+      { name: "1Password", status: "cli" },
     ],
   },
 ];

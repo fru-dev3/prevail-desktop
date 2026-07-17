@@ -2,9 +2,9 @@
 // not matched falls back to the diamond glyph in render so unknown domains still
 // look intentional.
 import {
-  Award, BookOpen, Brain, Briefcase, Calendar as CalendarIcon, Compass, Crown, Eye,
-  FileText, Gift, GraduationCap, Heart, Home, Mail, PenLine, Receipt, Shield,
-  TrendingUp, Users, type LucideIcon,
+  Award, BookOpen, Brain, Briefcase, Calendar as CalendarIcon, Church, Clock, Code, Compass, Crown, Eye,
+  FileText, Gift, GraduationCap, Hammer, Heart, Home, LayoutGrid, Landmark, Mail, Moon, PenLine, Receipt, Shield,
+  Sprout, Target, TrendingUp, Users, Wallet, Zap, type LucideIcon,
 } from "lucide-react";
 
 export const DOMAIN_ICONS: Record<string, LucideIcon> = {
@@ -43,6 +43,18 @@ export const DOMAIN_ICONS: Record<string, LucideIcon> = {
   explore: Compass,
   exploration: Compass,
   travel: Compass,
+  dev: Code,
+  engineering: Code,
+  money: Wallet,
+  productivity: Zap,
+  faith: Church,
+  growth: Sprout,
+  homestead: Hammer,
+  hunting: Target,
+  civic: Landmark,
+  dreams: Moon,
+  time: Clock,
+  general: LayoutGrid,
   research: BookOpen,
   books: BookOpen,
   reading: BookOpen,

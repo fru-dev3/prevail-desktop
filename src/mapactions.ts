@@ -56,14 +56,26 @@ export async function acceptTool(vaultPath: string, domainSlug: string, tool: Ma
   }
 }
 
+// How many tools a "Add recommended" action would add to a domain.
+export function suggestableCount(tools: MapTool[]): number {
+  return tools.filter((t) => t.suggested && t.status !== "gap" && t.status !== "hardware").length;
+}
+
 // Accept every suggested, connectable tool in a domain at once (the "bring in
-// the best-practice stack" action). Skips gaps and hardware, which are not
-// things you authenticate.
-export async function acceptStack(vaultPath: string, domainSlug: string, tools: MapTool[]): Promise<number> {
+// the best-practice stack" action). Skips gaps and hardware. onProgress fires
+// after each add so the UI can show "Adding X of N" instead of looking frozen.
+export async function acceptStack(
+  vaultPath: string,
+  domainSlug: string,
+  tools: MapTool[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<number> {
   const targets = tools.filter((t) => t.suggested && t.status !== "gap" && t.status !== "hardware");
   let n = 0;
+  onProgress?.(0, targets.length);
   for (const t of targets) {
     try { await acceptTool(vaultPath, domainSlug, t); n++; } catch { /* continue; report count */ }
+    onProgress?.(n, targets.length);
   }
   return n;
 }

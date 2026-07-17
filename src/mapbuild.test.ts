@@ -78,9 +78,13 @@ describe("buildMapModel", () => {
 
   it("seedOnlyModel renders the full library for an empty/new user", () => {
     const m = seedOnlyModel(base.asOf, base.host);
-    expect(m.domains.length).toBe(12);
-    // Dev seed scores 96 as in the prototype.
+    // The library covers the 12 prototype stacks plus canonical stacks for the
+    // rest of the common domains, so no domain shows up blank.
+    expect(m.domains.length).toBeGreaterThanOrEqual(24);
+    // Dev seed still scores 96 as in the prototype.
     expect(m.domains.find((d) => d.slug === "dev")!.score).toBe(96);
+    // A previously-blank domain now has a recommended stack.
+    expect(m.domains.find((d) => d.slug === "tax")!.tools.length).toBeGreaterThan(0);
   });
 
   it("stamps the snapshot with host + time (auth is machine-local)", () => {

@@ -108,17 +108,17 @@ export function Sidebar({
   const [lifeScore, setLifeScore] = useState<{ value: number; count: number } | null>(null);
   // Agent-operable score from the Map panel (broadcast + cached), so this chip
   // deep-links to the Map without the sidebar re-scanning apps itself.
-  const [agencyScore, setAgencyScore] = useState<number | null>(() => {
-    const v = typeof localStorage !== "undefined" ? localStorage.getItem("prevail:agency-score") : null;
+  const [mapScore, setMapScore] = useState<number | null>(() => {
+    const v = typeof localStorage !== "undefined" ? localStorage.getItem("prevail:map-score") : null;
     return v !== null && v !== "" ? Number(v) : null;
   });
   useEffect(() => {
     const onScore = (e: Event) => {
       const v = (e as CustomEvent).detail;
-      if (typeof v === "number") setAgencyScore(v);
+      if (typeof v === "number") setMapScore(v);
     };
-    window.addEventListener("prevail:agency-score", onScore);
-    return () => window.removeEventListener("prevail:agency-score", onScore);
+    window.addEventListener("prevail:map-score", onScore);
+    return () => window.removeEventListener("prevail:map-score", onScore);
   }, []);
   useEffect(() => {
     let on = true;
@@ -1186,9 +1186,9 @@ export function Sidebar({
         </span>
         {!collapsed && (
           <span className="flex min-w-0 flex-col items-start leading-tight">
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">Agency</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">Map</span>
             <span className="text-xs text-text-secondary">
-              {agencyScore !== null ? `${agencyScore}% agent-operable` : "open the Map"}
+              {mapScore !== null ? `${mapScore}% agent-operable` : "open the Map"}
             </span>
           </span>
         )}
