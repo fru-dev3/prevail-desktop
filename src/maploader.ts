@@ -7,15 +7,19 @@ import type { MapModel } from "./map";
 import { appStatus } from "./appspanel";
 import type { EngineApp, Domain } from "./types";
 
-// Map the app's 5-state appStatus() to a probe result the builder understands:
-//   connected/authorized/connecting => reachable now (ok true)
-//   attention                       => present but failing (ok false -> broken)
-//   disconnected                    => not authenticated (undefined -> declared base)
-function probeFromApp(app: EngineApp): Probe {
+// Map the app's 5-state appStatus() to a probe result the builder understands.
+// ONLY a genuinely "connected" app (configured AND has actually synced) counts
+// as wired. "authorized" is the state a just-added or credentials-entered app
+// has BEFORE any successful sync - treating it as connected made freshly-added
+// browser/API tools jump a domain to 100% (they are added, not wired). So
+// authorized/connecting/disconnected fall back to the tool's declared
+// integration reach (api = scriptable, browser = manual), and the user still
+// sees a Connect action. "attention" means present but failing -> broken.
+export function probeFromApp(app: EngineApp): Probe {
   const s = appStatus(app);
+  if (s === "connected") return { appId: app.id, ok: true };
   if (s === "attention") return { appId: app.id, ok: false };
-  if (s === "connected" || s === "authorized" || s === "connecting") return { appId: app.id, ok: true };
-  return { appId: app.id }; // disconnected: leave to the declared/derived status
+  return { appId: app.id }; // authorized / connecting / disconnected -> declared base
 }
 
 function toRawApp(app: EngineApp): RawApp {

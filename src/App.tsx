@@ -1641,8 +1641,9 @@ export default function App() {
         {/* Threads rail - visible on every tab so the domain's conversation
             history stays one click away and the left chrome doesn't vanish
             when you switch to Benchmark. Picking a thread on Benchmark jumps
-            back to Chat with that thread open. */}
-        {(
+            back to Chat with that thread open. Hidden on the Map, which is a
+            cross-domain report (not a domain conversation) and wants full width. */}
+        {tab !== "map" && (
           <>
             <ThreadsRail
               threads={threads}
@@ -1695,17 +1696,19 @@ export default function App() {
             {/* Quick visual cue: are we in an APP or a DOMAIN? An icon (no text)
                 at the far left, so the two contexts are instantly distinguishable.
                 App = plug, domain/general = layers. */}
+            {tab !== "map" && (
             <span
               title={onApp ? `App: ${selectedApp?.title ?? ""}` : `Domain: ${titleCase(selectedDomain || "general")}`}
               className={`mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${onApp ? "bg-accent-soft text-accent" : "bg-surface-warm text-text-secondary"}`}
             >
               {onApp ? <Plug className="h-4 w-4" /> : <Layers className="h-4 w-4" />}
             </span>
+            )}
             {/* Chat + Council sit on the LEFT for BOTH apps and domains, so the
                 conversation is always in the same place. The app's / domain's
                 OTHER views (Runs / Settings / Domains, or Insights / Preferences)
                 live in the right cluster below. */}
-            {TABS.map((t) => {
+            {tab !== "map" && TABS.map((t) => {
               const Icon = t.icon;
               const active = t.id === "chat"
                 ? tab === "chat" && (onApp ? appTab === "chat" : domainTab === "chat")

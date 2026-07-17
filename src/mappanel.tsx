@@ -4,7 +4,7 @@
 // around, add the best-practice apps, and connect them.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X, Plug, ListPlus, ChevronDown, ChevronRight, Circle } from "lucide-react";
+import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X, Plug, ListPlus, ChevronDown, ChevronRight, Circle, MousePointerClick } from "lucide-react";
 import { invoke } from "./bridge";
 import { loadMapModel } from "./maploader";
 import { acceptTool, acceptStack, suggestableCount, moveTool, removeToolFromDomain, fileGapTask, fileIdentityTask } from "./mapactions";
@@ -152,7 +152,7 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
       <div className="mx-auto max-w-[1180px] px-5 py-5 pb-24">
         {err && <div className="mb-3 rounded-md border border-err/40 bg-err/10 px-3 py-1.5 text-[12px] text-err">{err}</div>}
 
-        <div className="flex flex-wrap gap-2.5">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
           <Stat n={s.tools} label="tools tracked" />
           <Stat n={s.wired} label="agent-wired now" />
           <Stat n={s.scriptable} label="scriptable next" />
@@ -214,12 +214,15 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
           ))}
         </div>
 
-        <p className="mt-8 max-w-[72ch] border-t border-border pt-4 text-[13px] leading-relaxed text-text-muted">
-          Score per domain: connected and CLI count full, MCP-available three quarters, API and research adds half,
-          manual and browser zero; hardware is excluded and each gap counts against you. Suggested tools (dimmed) are
-          best-practice picks you have not added yet and do not count until you add them. Click a tool to open its detail
-          page and configure, train, or add skills.
-        </p>
+        <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[11px]">
+          <span className="font-mono uppercase tracking-[0.12em] text-text-muted">Weight</span>
+          <WeightKey tone="bg-accent" weight="1" note="connected · CLI" />
+          <WeightKey tone="bg-accent/60" weight="¾" note="MCP" />
+          <WeightKey tone="bg-accent/30" weight="½" note="API · research" />
+          <WeightKey tone="bg-surface-warm" weight="0" note="manual · browser · gap" />
+          <span className="inline-flex items-center gap-1 text-text-muted"><Circle className="h-2.5 w-2.5 fill-transparent" /> hardware excluded</span>
+          <span className="ml-auto inline-flex items-center gap-1 text-text-muted"><MousePointerClick className="h-3.5 w-3.5" /> tap a tool to open it</span>
+        </div>
       </div>
     </div>
   );
@@ -227,10 +230,22 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
 
 function Stat({ n, label, alarm }: { n: number; label: string; alarm?: boolean }) {
   return (
-    <div className="min-w-[118px] rounded-md border border-border bg-surface px-4 py-2.5">
+    <div className="rounded-md border border-border bg-surface px-4 py-2.5">
       <div className={`text-2xl font-semibold tabular-nums ${alarm ? "text-warn" : "text-text-primary"}`}>{n}</div>
       <div className="font-mono text-[10px] uppercase tracking-[0.07em] text-text-muted">{label}</div>
     </div>
+  );
+}
+
+// Compact score-weight key: a swatch scaled to the weight + a tiny label. Keeps
+// the footer visual, not a paragraph.
+function WeightKey({ tone, weight, note }: { tone: string; weight: string; note: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5" title={`${note} count ${weight}`}>
+      <span className={`inline-block h-2.5 w-2.5 rounded-sm ${tone}`} />
+      <span className="font-mono tabular-nums text-text-secondary">{weight}</span>
+      <span className="text-text-muted">{note}</span>
+    </span>
   );
 }
 
