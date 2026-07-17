@@ -46,6 +46,12 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
       const r = await loadMapModel(vaultPath, { includeSuggestions: true });
       setModel(r.model);
       setAppsById(r.appsById);
+      // Broadcast the overall agent-operable score so the sidebar can show a
+      // compact chip that deep-links here (no second heavy load in the sidebar).
+      try {
+        localStorage.setItem("prevail:agency-score", String(r.model.overallScore));
+        window.dispatchEvent(new CustomEvent("prevail:agency-score", { detail: r.model.overallScore }));
+      } catch { /* non-fatal */ }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {

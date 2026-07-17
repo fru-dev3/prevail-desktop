@@ -3,7 +3,7 @@
 // gateway/MCP/benchmark status strips from shared modules.
 import { Fragment, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm as tauriConfirm } from "@tauri-apps/plugin-dialog";
-import { ArrowUpRight, Activity, Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Folder, Layers, Loader2, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, PowerOff, RotateCcw, Settings as SettingsIcon, Sparkles, StarOff, Sun, X } from "lucide-react";
+import { ArrowUpRight, Activity, Archive, Briefcase, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Folder, Layers, Loader2, MessagesSquare, Monitor, Moon, MoreVertical, Pin, Plug, Plus, PowerOff, RotateCcw, Settings as SettingsIcon, Sparkles, StarOff, Sun, Waypoints, X } from "lucide-react";
 import { PrevailLogo } from "./PrevailLogo";
 import { invoke } from "./bridge";
 import { STATUS_TINT } from "./constants";
@@ -106,6 +106,20 @@ export function Sidebar({
   // App-wide aggregate score (mean of every domain's context score) - the
   // single "how ready is my whole life-OS" number, pinned bottom-left.
   const [lifeScore, setLifeScore] = useState<{ value: number; count: number } | null>(null);
+  // Agent-operable score from the Map panel (broadcast + cached), so this chip
+  // deep-links to the Map without the sidebar re-scanning apps itself.
+  const [agencyScore, setAgencyScore] = useState<number | null>(() => {
+    const v = typeof localStorage !== "undefined" ? localStorage.getItem("prevail:agency-score") : null;
+    return v !== null && v !== "" ? Number(v) : null;
+  });
+  useEffect(() => {
+    const onScore = (e: Event) => {
+      const v = (e as CustomEvent).detail;
+      if (typeof v === "number") setAgencyScore(v);
+    };
+    window.addEventListener("prevail:agency-score", onScore);
+    return () => window.removeEventListener("prevail:agency-score", onScore);
+  }, []);
   useEffect(() => {
     let on = true;
     invoke<LifeReadiness>("engine_score_all", { vault: vaultPath })
@@ -1157,6 +1171,28 @@ export function Sidebar({
           )}
         </button>
       )}
+
+      {/* Agent-operable summary - opens the Map. Score appears once the Map has
+          been computed at least once (broadcast + cached). */}
+      <button
+        onClick={() => setTab("map")}
+        title="Map: every domain's tool stack and how agent-operable it is"
+        className={`flex items-center border-t border-border-subtle transition-colors hover:bg-surface-warm ${
+          tab === "map" ? "bg-surface-warm" : ""
+        } ${collapsed ? "justify-center px-2 py-2" : "gap-2.5 px-3 py-2"}`}
+      >
+        <span className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center">
+          <Waypoints className="h-4 w-4 text-accent" />
+        </span>
+        {!collapsed && (
+          <span className="flex min-w-0 flex-col items-start leading-tight">
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">Agency</span>
+            <span className="text-xs text-text-secondary">
+              {agencyScore !== null ? `${agencyScore}% agent-operable` : "open the Map"}
+            </span>
+          </span>
+        )}
+      </button>
 
       {/* The live process / benchmark / backup / connectivity strips used to
           stack here and made the footer busy. They now live behind the single
