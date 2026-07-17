@@ -122,6 +122,7 @@ export function buildMapModel(inp: BuildInputs): MapModel {
         status,
         appId: app.id,
         identity: app.account?.label || undefined,
+        domains: (app.domains ?? []).map(norm),
       };
     });
 

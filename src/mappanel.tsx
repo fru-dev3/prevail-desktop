@@ -1,15 +1,15 @@
 // Map panel: a cross-domain report of every domain's tool stack and how
-// agent-operable it is. Phase 2 is the read-only view (tiles, chips, meters,
-// stat row, click-to-isolate legend). Organize + Activate land in later phases.
+// agent-operable it is. Read-only report (Phase 2) + organize actions (Phase 3):
+// accept best-practice suggestions into a domain, add a whole recommended stack,
+// and move or remove tools across domains. Activate (connect in place) is Phase 4.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Waypoints, TriangleAlert } from "lucide-react";
+import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X } from "lucide-react";
 import { loadMapModel } from "./maploader";
+import { acceptTool, acceptStack, moveTool, removeToolFromDomain } from "./mapactions";
 import { STATUS_LABEL, type MapModel, type MapDomain, type MapTool } from "./map";
 import type { ToolStatus } from "./mapseed";
 
-// Per-status chip styling, mapped onto the app's semantic Tailwind tokens.
-// Weight reads left (wired, solid) to right (missing, alarmed).
 const CHIP: Record<ToolStatus, string> = {
   connected: "bg-accent text-background border-transparent",
   cli: "bg-ai text-white border-transparent",
@@ -22,7 +22,6 @@ const CHIP: Record<ToolStatus, string> = {
   broken: "bg-err/15 text-err border-err/40",
 };
 
-// The legend order (also the filter buttons). hardware last; excluded from score.
 const LEGEND: ToolStatus[] = ["connected", "cli", "mcp", "api", "research", "browser", "gap", "broken", "hardware"];
 
 function meterTone(score: number): string {
@@ -34,6 +33,7 @@ function meterTone(score: number): string {
 export function MapPanel({ vaultPath }: { vaultPath: string }) {
   const [model, setModel] = useState<MapModel | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<ToolStatus | null>(null);
 
@@ -51,6 +51,14 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Run an organize action, then reload the model. Serialized via `busy`.
+  const act = useCallback(async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    try { await fn(); await load(); } catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+  }, [load]);
+
+  const allDomains = useMemo(() => (model?.domains ?? []).map((d) => ({ slug: d.slug, label: d.label })), [model]);
+
   const asOf = useMemo(() => {
     if (!model) return "";
     try { return new Date(model.asOf).toLocaleString(); } catch { return model.asOf; }
@@ -59,7 +67,7 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
   if (loading && !model) {
     return <div className="p-8 text-sm text-text-muted">Reading your domains and connections...</div>;
   }
-  if (err) {
+  if (err && !model) {
     return (
       <div className="p-8 text-sm text-err">
         Could not build the map: {err}
@@ -73,7 +81,6 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
 
   return (
     <div className="mx-auto max-w-[1180px] px-5 py-6 pb-24">
-      {/* Header */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <div className="flex items-baseline gap-3">
           <h1 className="flex items-center gap-2 text-xl font-semibold text-text-primary">
@@ -91,12 +98,13 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
             title="Re-probe connections on this machine"
             className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+            <RefreshCw className={`h-3.5 w-3.5 ${loading || busy ? "animate-spin" : ""}`} /> Refresh
           </button>
         </div>
       </div>
 
-      {/* Stat row */}
+      {err && <div className="mt-3 rounded border border-err/40 bg-err/10 px-3 py-1.5 text-[12px] text-err">{err}</div>}
+
       <div className="mt-4 flex flex-wrap gap-2.5">
         <Stat n={s.tools} label="tools tracked" />
         <Stat n={s.wired} label="agent-wired now" />
@@ -105,7 +113,6 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
         <Stat n={s.gaps} label="gaps" alarm={s.gaps > 0} />
       </div>
 
-      {/* Legend / filter */}
       <div className="mt-4 flex flex-wrap items-center gap-1.5">
         <span className="mr-1 text-xs text-text-muted">Isolate a status:</span>
         {LEGEND.map((st) => (
@@ -121,15 +128,23 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
         ))}
       </div>
 
-      {/* Machine-local stamp */}
       <div className="mt-3 text-[11px] text-text-muted">
         Auth is machine-local. This reflects <span className="font-mono">{model.host}</span> as of {asOf}. Another machine may differ.
       </div>
 
-      {/* Domain grid */}
-      <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(330px,1fr))] gap-4">
+      <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
         {model.domains.map((d) => (
-          <DomainTile key={d.slug} domain={d} filter={filter} />
+          <DomainTile
+            key={d.slug}
+            domain={d}
+            filter={filter}
+            busy={busy}
+            allDomains={allDomains}
+            onAccept={(t) => void act(() => acceptTool(vaultPath, d.slug, t))}
+            onAcceptStack={() => void act(() => acceptStack(vaultPath, d.slug, d.tools))}
+            onRemove={(t) => t.appId && void act(() => removeToolFromDomain(vaultPath, t.appId!, t.domains ?? [], d.slug))}
+            onMove={(t, to) => t.appId && void act(() => moveTool(vaultPath, t.appId!, t.domains ?? [], d.slug, to))}
+          />
         ))}
       </div>
 
@@ -137,7 +152,7 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
         Agency score per domain: connected and CLI count full, MCP-available three quarters, API and research adds half,
         manual and browser zero; hardware is excluded and each gap counts against you. It answers one question: if an agent
         had to act in this domain right now, how far could it get without you? Suggested tools (dimmed) are best-practice
-        picks you have not added yet and do not count until you do.
+        picks you have not added yet and do not count until you add them.
       </p>
     </div>
   );
@@ -152,7 +167,19 @@ function Stat({ n, label, alarm }: { n: number; label: string; alarm?: boolean }
   );
 }
 
-function DomainTile({ domain, filter }: { domain: MapDomain; filter: ToolStatus | null }) {
+interface TileProps {
+  domain: MapDomain;
+  filter: ToolStatus | null;
+  busy: boolean;
+  allDomains: { slug: string; label: string }[];
+  onAccept: (t: MapTool) => void;
+  onAcceptStack: () => void;
+  onRemove: (t: MapTool) => void;
+  onMove: (t: MapTool, to: string) => void;
+}
+
+function DomainTile({ domain, filter, busy, allDomains, onAccept, onAcceptStack, onRemove, onMove }: TileProps) {
+  const suggestable = domain.tools.filter((t) => t.suggested && t.status !== "gap" && t.status !== "hardware").length;
   return (
     <section className="flex flex-col gap-2.5 rounded-lg border border-border bg-surface p-4">
       <div className="flex items-baseline justify-between gap-2">
@@ -170,26 +197,109 @@ function DomainTile({ domain, filter }: { domain: MapDomain; filter: ToolStatus 
       )}
       <div className="flex flex-wrap gap-1.5">
         {domain.tools.map((t, i) => (
-          <Chip key={`${t.name}-${i}`} tool={t} dimmed={!!filter && t.status !== filter} />
+          <Chip
+            key={`${t.name}-${i}`}
+            tool={t}
+            dimmed={!!filter && t.status !== filter}
+            busy={busy}
+            domainSlug={domain.slug}
+            allDomains={allDomains}
+            onAccept={() => onAccept(t)}
+            onRemove={() => onRemove(t)}
+            onMove={(to) => onMove(t, to)}
+          />
         ))}
       </div>
+      {suggestable > 0 && (
+        <button
+          disabled={busy}
+          onClick={onAcceptStack}
+          className="mt-1 flex w-fit items-center gap-1 rounded-full border border-accent-border bg-accent-soft px-2.5 py-0.5 text-[11px] text-accent transition-colors hover:bg-accent hover:text-background disabled:opacity-50"
+        >
+          <Plus className="h-3 w-3" /> Add recommended ({suggestable})
+        </button>
+      )}
     </section>
   );
 }
 
-function Chip({ tool, dimmed }: { tool: MapTool; dimmed: boolean }) {
+interface ChipProps {
+  tool: MapTool;
+  dimmed: boolean;
+  busy: boolean;
+  domainSlug: string;
+  allDomains: { slug: string; label: string }[];
+  onAccept: () => void;
+  onRemove: () => void;
+  onMove: (to: string) => void;
+}
+
+function Chip({ tool, dimmed, busy, domainSlug, allDomains, onAccept, onRemove, onMove }: ChipProps) {
+  const [menu, setMenu] = useState(false);
   const title = [tool.note, tool.identity ? `identity: ${tool.identity}` : "", tool.suggested ? "suggested - not added yet" : ""]
     .filter(Boolean)
     .join(" · ");
+
+  // A suggested tool is a one-click add (gaps/hardware are not addable).
+  const addable = tool.suggested && tool.status !== "gap" && tool.status !== "hardware";
+  const owned = !tool.suggested && !!tool.appId;
+  const moveTargets = allDomains.filter((d) => d.slug !== domainSlug);
+
   return (
     <span
-      title={title || undefined}
-      className={`whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs transition-opacity ${CHIP[tool.status]} ${
-        tool.suggested ? "opacity-45" : ""
+      className={`relative inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs transition-opacity ${CHIP[tool.status]} ${
+        tool.suggested ? "opacity-60" : ""
       } ${dimmed ? "opacity-15" : ""}`}
+      title={title || undefined}
     >
       {tool.name}
       {tool.identity && !tool.suggested ? <span className="ml-1 opacity-70">· {tool.identity}</span> : null}
+      {addable && (
+        <button
+          disabled={busy}
+          onClick={onAccept}
+          title={`Add ${tool.name} to this domain`}
+          className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-accent hover:text-background disabled:opacity-50"
+        >
+          <Plus className="h-3 w-3" />
+        </button>
+      )}
+      {owned && (
+        <button
+          disabled={busy}
+          onClick={() => setMenu((m) => !m)}
+          title="Move or remove"
+          className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full opacity-70 hover:opacity-100 disabled:opacity-50"
+        >
+          <MoreHorizontal className="h-3 w-3" />
+        </button>
+      )}
+      {menu && owned && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-48 rounded-md border border-border bg-surface p-1 shadow-lg">
+          <button
+            onClick={() => { setMenu(false); onRemove(); }}
+            className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[12px] text-text-secondary hover:bg-surface-warm hover:text-err"
+          >
+            <X className="h-3 w-3" /> Remove from {domainSlug}
+          </button>
+          {moveTargets.length > 0 && (
+            <>
+              <div className="mt-1 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">Move to</div>
+              <div className="max-h-40 overflow-y-auto">
+                {moveTargets.map((d) => (
+                  <button
+                    key={d.slug}
+                    onClick={() => { setMenu(false); onMove(d.slug); }}
+                    className="block w-full truncate rounded px-2 py-1 text-left text-[12px] text-text-secondary hover:bg-surface-warm hover:text-accent"
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </span>
   );
 }

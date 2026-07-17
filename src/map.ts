@@ -22,6 +22,8 @@ export interface MapTool {
   suggested?: boolean;
   // The vault app id this tool resolves to, when it maps to a data/apps entry.
   appId?: string;
+  // The app's full domain membership (for move/remove across domains).
+  domains?: string[];
 }
 
 export interface MapDomain {
