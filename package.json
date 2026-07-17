@@ -1,6 +1,6 @@
 {
   "name": "prevail-desktop",
-  "version": "0.3.102",
+  "version": "0.3.103",
   "description": "Prevail desktop \u2014 native macOS cockpit for AI council deliberation",
   "license": "GPL-3.0-only",
   "type": "module",
