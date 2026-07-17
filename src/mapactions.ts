@@ -3,7 +3,7 @@
 // suggestions into a domain, and remove tools. All writes go through the same
 // engine commands the Apps panel uses, so adoption/union semantics are shared.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./bridge";
 import type { MapTool } from "./map";
 import type { ToolStatus } from "./mapseed";
 

@@ -1,7 +1,7 @@
 // Map: the loader. Gathers real vault data via Tauri and hands it to the pure
 // builder (mapbuild.ts). Kept thin so the merge/scoring logic stays testable.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./bridge";
 import { buildMapModel, seedOnlyModel, type RawApp, type RawDomain, type Probe } from "./mapbuild";
 import type { MapModel } from "./map";
 import { appStatus } from "./appspanel";
