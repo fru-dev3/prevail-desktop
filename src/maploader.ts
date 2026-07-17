@@ -34,8 +34,15 @@ export interface LoadOpts {
   includeSuggestions?: boolean;
 }
 
+export interface MapLoad {
+  model: MapModel;
+  // Raw apps keyed by id, so the panel can open the real connect surface for a
+  // tool (dispatch prevail:open-app with the full EngineApp).
+  appsById: Record<string, EngineApp>;
+}
+
 // Load the full Map model for a vault, snapshotting THIS machine's auth state.
-export async function loadMapModel(vaultPath: string, opts: LoadOpts = {}): Promise<MapModel> {
+export async function loadMapModel(vaultPath: string, opts: LoadOpts = {}): Promise<MapLoad> {
   const host = await currentHost();
   const asOf = new Date().toISOString();
 
@@ -44,6 +51,9 @@ export async function loadMapModel(vaultPath: string, opts: LoadOpts = {}): Prom
     invoke<Domain[]>("scan_vault", { path: vaultPath }).catch(() => [] as Domain[]),
   ]);
 
+  const appsById: Record<string, EngineApp> = {};
+  for (const a of apps || []) appsById[a.id] = a;
+
   // Real user domains, hiding the machine-managed pseudo-domains (leading _).
   const domains: RawDomain[] = (domainsRaw || [])
     .filter((d) => d && d.name && !d.name.startsWith("_"))
@@ -51,13 +61,13 @@ export async function loadMapModel(vaultPath: string, opts: LoadOpts = {}): Prom
 
   if (domains.length === 0) {
     // brand-new / empty vault: show the recommended library so it is never blank.
-    return seedOnlyModel(asOf, host);
+    return { model: seedOnlyModel(asOf, host), appsById };
   }
 
   const rawApps = (apps || []).map(toRawApp);
   const probes = (apps || []).map(probeFromApp);
 
-  return buildMapModel({
+  const model = buildMapModel({
     domains,
     apps: rawApps,
     probes,
@@ -65,6 +75,7 @@ export async function loadMapModel(vaultPath: string, opts: LoadOpts = {}): Prom
     host,
     includeSuggestions: opts.includeSuggestions ?? true,
   });
+  return { model, appsById };
 }
 
 async function currentHost(): Promise<string> {

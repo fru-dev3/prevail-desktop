@@ -4,11 +4,12 @@
 // and move or remove tools across domains. Activate (connect in place) is Phase 4.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X } from "lucide-react";
+import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X, Plug, ListPlus } from "lucide-react";
 import { loadMapModel } from "./maploader";
-import { acceptTool, acceptStack, moveTool, removeToolFromDomain } from "./mapactions";
+import { acceptTool, acceptStack, moveTool, removeToolFromDomain, fileGapTask, fileIdentityTask } from "./mapactions";
 import { STATUS_LABEL, type MapModel, type MapDomain, type MapTool } from "./map";
 import type { ToolStatus } from "./mapseed";
+import type { EngineApp } from "./types";
 
 const CHIP: Record<ToolStatus, string> = {
   connected: "bg-accent text-background border-transparent",
@@ -32,6 +33,7 @@ function meterTone(score: number): string {
 
 export function MapPanel({ vaultPath }: { vaultPath: string }) {
   const [model, setModel] = useState<MapModel | null>(null);
+  const [appsById, setAppsById] = useState<Record<string, EngineApp>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -41,7 +43,9 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
     setLoading(true);
     setErr(null);
     try {
-      setModel(await loadMapModel(vaultPath, { includeSuggestions: true }));
+      const r = await loadMapModel(vaultPath, { includeSuggestions: true });
+      setModel(r.model);
+      setAppsById(r.appsById);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -50,6 +54,13 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
   }, [vaultPath]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Activate: open a tool's real connect/re-auth surface (the same AppDetail the
+  // Apps view uses), where every auth flow already lives. Cross-panel via event.
+  const openApp = useCallback((appId: string) => {
+    const app = appsById[appId];
+    if (app) window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }));
+  }, [appsById]);
 
   // Run an organize action, then reload the model. Serialized via `busy`.
   const act = useCallback(async (fn: () => Promise<unknown>) => {
@@ -144,6 +155,9 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
             onAcceptStack={() => void act(() => acceptStack(vaultPath, d.slug, d.tools))}
             onRemove={(t) => t.appId && void act(() => removeToolFromDomain(vaultPath, t.appId!, t.domains ?? [], d.slug))}
             onMove={(t, to) => t.appId && void act(() => moveTool(vaultPath, t.appId!, t.domains ?? [], d.slug, to))}
+            onConnect={(t) => t.appId && openApp(t.appId)}
+            onFileGap={(t) => void act(() => fileGapTask(vaultPath, d.slug, t.name))}
+            onFileIdentity={(id) => void act(() => fileIdentityTask(vaultPath, d.slug, id))}
           />
         ))}
       </div>
@@ -176,9 +190,12 @@ interface TileProps {
   onAcceptStack: () => void;
   onRemove: (t: MapTool) => void;
   onMove: (t: MapTool, to: string) => void;
+  onConnect: (t: MapTool) => void;
+  onFileGap: (t: MapTool) => void;
+  onFileIdentity: (id: string) => void;
 }
 
-function DomainTile({ domain, filter, busy, allDomains, onAccept, onAcceptStack, onRemove, onMove }: TileProps) {
+function DomainTile({ domain, filter, busy, allDomains, onAccept, onAcceptStack, onRemove, onMove, onConnect, onFileGap, onFileIdentity }: TileProps) {
   const suggestable = domain.tools.filter((t) => t.suggested && t.status !== "gap" && t.status !== "hardware").length;
   return (
     <section className="flex flex-col gap-2.5 rounded-lg border border-border bg-surface p-4">
@@ -189,12 +206,18 @@ function DomainTile({ domain, filter, busy, allDomains, onAccept, onAcceptStack,
       <div className="h-[5px] overflow-hidden rounded-full bg-surface-warm">
         <span className={`block h-full rounded-full ${meterTone(domain.score)}`} style={{ width: `${domain.score}%` }} />
       </div>
-      {domain.missingIdentities.length > 0 && (
-        <div className="flex items-center gap-1 text-[11px] text-warn">
+      {domain.missingIdentities.map((id) => (
+        <button
+          key={id}
+          disabled={busy}
+          onClick={() => onFileIdentity(id)}
+          title={`File a task to connect ${id}`}
+          className="flex w-fit items-center gap-1 text-[11px] text-warn hover:underline disabled:opacity-50"
+        >
           <TriangleAlert className="h-3 w-3 shrink-0" />
-          needs identity: {domain.missingIdentities.join(", ")}
-        </div>
-      )}
+          needs identity: {id} - file a task
+        </button>
+      ))}
       <div className="flex flex-wrap gap-1.5">
         {domain.tools.map((t, i) => (
           <Chip
@@ -207,6 +230,8 @@ function DomainTile({ domain, filter, busy, allDomains, onAccept, onAcceptStack,
             onAccept={() => onAccept(t)}
             onRemove={() => onRemove(t)}
             onMove={(to) => onMove(t, to)}
+            onConnect={() => onConnect(t)}
+            onFileGap={() => onFileGap(t)}
           />
         ))}
       </div>
@@ -232,9 +257,14 @@ interface ChipProps {
   onAccept: () => void;
   onRemove: () => void;
   onMove: (to: string) => void;
+  onConnect: () => void;
+  onFileGap: () => void;
 }
 
-function Chip({ tool, dimmed, busy, domainSlug, allDomains, onAccept, onRemove, onMove }: ChipProps) {
+// Owned tools not yet authenticated on this machine can be connected in place.
+const CONNECTABLE = new Set<ToolStatus>(["browser", "api", "mcp", "research", "broken"]);
+
+function Chip({ tool, dimmed, busy, domainSlug, allDomains, onAccept, onRemove, onMove, onConnect, onFileGap }: ChipProps) {
   const [menu, setMenu] = useState(false);
   const title = [tool.note, tool.identity ? `identity: ${tool.identity}` : "", tool.suggested ? "suggested - not added yet" : ""]
     .filter(Boolean)
@@ -243,6 +273,8 @@ function Chip({ tool, dimmed, busy, domainSlug, allDomains, onAccept, onRemove, 
   // A suggested tool is a one-click add (gaps/hardware are not addable).
   const addable = tool.suggested && tool.status !== "gap" && tool.status !== "hardware";
   const owned = !tool.suggested && !!tool.appId;
+  const connectable = owned && CONNECTABLE.has(tool.status);
+  const isGap = tool.status === "gap";
   const moveTargets = allDomains.filter((d) => d.slug !== domainSlug);
 
   return (
@@ -262,6 +294,26 @@ function Chip({ tool, dimmed, busy, domainSlug, allDomains, onAccept, onRemove, 
           className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-accent hover:text-background disabled:opacity-50"
         >
           <Plus className="h-3 w-3" />
+        </button>
+      )}
+      {isGap && !tool.suggested && (
+        <button
+          disabled={busy}
+          onClick={onFileGap}
+          title={`File a task to set up ${tool.name}`}
+          className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-warn hover:text-background disabled:opacity-50"
+        >
+          <ListPlus className="h-3 w-3" />
+        </button>
+      )}
+      {connectable && (
+        <button
+          disabled={busy}
+          onClick={onConnect}
+          title={tool.status === "broken" ? `Reconnect ${tool.name}` : `Connect ${tool.name}`}
+          className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-accent hover:text-background disabled:opacity-50"
+        >
+          <Plug className="h-3 w-3" />
         </button>
       )}
       {owned && (

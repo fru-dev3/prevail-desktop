@@ -84,6 +84,28 @@ export async function removeToolFromDomain(
   await setToolDomains(vaultPath, appId, next);
 }
 
+// Turn a GAP (missing coverage) into an actionable task in the domain, so a
+// hole in the map becomes something the steward/loops can pick up.
+export async function fileGapTask(vaultPath: string, domainSlug: string, toolName: string): Promise<void> {
+  await invoke("tasks_add", {
+    vault: vaultPath,
+    domain: domainSlug,
+    text: `Set up ${toolName} (Map gap)`,
+    source: "map",
+  });
+}
+
+// File a task to connect a missing multi-account identity a domain needs (e.g.
+// "connect account2@example.com so agents can reach real-estate mail").
+export async function fileIdentityTask(vaultPath: string, domainSlug: string, identity: string): Promise<void> {
+  await invoke("tasks_add", {
+    vault: vaultPath,
+    domain: domainSlug,
+    text: `Connect the ${identity} Google account so agents can reach this domain (Map)`,
+    source: "map",
+  });
+}
+
 // Move a tool from one domain to another (remove from src, add to dest).
 export async function moveTool(
   vaultPath: string,
