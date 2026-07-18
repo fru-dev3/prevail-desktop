@@ -550,6 +550,7 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
         Icon={enabled ? ShieldCheck : Cloud}
         label={enabled ? "Bunker mode" : "Cloud connected"}
         on
+        onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "privacy" }))}
         tip={enabled
           ? "Bunker Mode: nothing leaves this device. Only local models run; cloud models and web access are blocked."
           : "Cloud Connected: cloud models and web access are enabled. Requests may leave this device. Switch to Bunker Mode for local-only."}
@@ -560,6 +561,7 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
         Icon={vaultLocked ? FolderLock : FolderOpen}
         label={vaultLocked ? "Vault locked" : "Vault unlocked"}
         on={vaultLocked}
+        onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "privacy" }))}
         tip={vaultLocked
           ? "Vault Locked: the assistant only reads and writes inside your vault folder."
           : "Vault Unlocked: the assistant may reach files outside your vault folder."}
@@ -583,6 +585,7 @@ export function BunkerRibbon({ enabled }: { enabled: boolean }) {
             Icon={Ghost}
             label="Incognito"
             on
+            onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "privacy" }))}
             tip="Global Incognito is ON: prompts aren't logged and nothing is written to memory, everywhere in the app."
           />
         </>

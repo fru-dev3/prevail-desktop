@@ -1226,7 +1226,9 @@ export default function App() {
   const [domainTab, setDomainTab] = useState<DomainTab>("chat");
   // Collapse the top-right tab cluster (Work/Insights/.../Archive) into a single
   // chevron at the right edge for a cleaner top bar; expands back leftward.
-  const [navCollapsed, setNavCollapsed] = useState<boolean>(() => localStorage.getItem("prevail.nav.collapsed") === "1");
+  // Collapsed by default for a cleaner top bar; only stays expanded if the user
+  // explicitly opened it (stored "0").
+  const [navCollapsed, setNavCollapsed] = useState<boolean>(() => localStorage.getItem("prevail.nav.collapsed") !== "0");
   const toggleNavCollapsed = () => setNavCollapsed((v) => { const n = !v; localStorage.setItem("prevail.nav.collapsed", n ? "1" : "0"); return n; });
   // Bunker Mode: backend is the source of truth; mirror it into localStorage on
   // mount so synchronous reads (isBunkerOn) everywhere stay correct, and into
