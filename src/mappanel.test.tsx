@@ -32,6 +32,7 @@ const invokeMock = vi.fn(async (cmd: string) => {
     case "app_favicon": return "";
     case "engine_app_add": return { ok: true };
     case "engine_app_set_domains": return { ok: true, domains: [] };
+    case "engine_obsidian_import": return { ok: true, imported: 12, domain: "notes" };
     case "tasks_add": return [];
     default: return undefined;
   }
@@ -40,6 +41,7 @@ vi.mock("./bridge", () => ({
   invoke: (...a: unknown[]) => invokeMock(...(a as [string])),
   listen: vi.fn(async () => () => {}),
 }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => "/Users/me/ObsidianVault") }));
 
 import { MapPanel } from "./mappanel";
 
@@ -96,6 +98,19 @@ describe("MapPanel renders and acts", () => {
     await waitFor(() => expect(opened.length).toBeGreaterThan(0));
     expect((opened[0] as EngineApp).id).toBe("github");
     window.removeEventListener("prevail:open-app", onOpen);
+  });
+
+  it("Import Obsidian opens the flow, picks a folder, and runs the import", async () => {
+    render(<MapPanel vaultPath="/v" />);
+    await waitFor(() => expect(screen.getByText("Dev")).toBeTruthy());
+    fireEvent.click(screen.getByText("Import Obsidian"));
+    await waitFor(() => expect(screen.getByText("Import an Obsidian vault")).toBeTruthy());
+    // Pick the folder (dialog mocked to return a path), then Import.
+    fireEvent.click(screen.getByText("Choose folder..."));
+    await waitFor(() => expect(screen.getByText("/Users/me/ObsidianVault")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("engine_obsidian_import", expect.objectContaining({ from: "/Users/me/ObsidianVault", vault: "/v" })));
+    await waitFor(() => expect(screen.getByText(/Imported/)).toBeTruthy());
   });
 
   it("isolating a status filters across domains (hides non-matching)", async () => {

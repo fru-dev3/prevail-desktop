@@ -519,6 +519,7 @@ pub fn run() {
             benchmark::benchmark_suggest,
             engine::engine_domains,
             engine::engine_apps_list,
+            engine::engine_obsidian_import,
             engine::notify_user,
             composio::composio_status,
             composio::composio_set_key,

@@ -1023,6 +1023,15 @@ pub fn engine_apps_list(vault: Option<String>) -> Result<serde_json::Value, Stri
     }
 }
 
+/// Import an existing Obsidian vault folder into a Prevail domain as AI-readable
+/// source (wikilinks/embeds converted, tags + frontmatter kept). Idempotent;
+/// registers an `obsidian` connector app. Returns { ok, imported, domain, ... }.
+#[tauri::command]
+pub fn engine_obsidian_import(vault: String, from: String, domain: Option<String>) -> Result<serde_json::Value, String> {
+    let dom = domain.unwrap_or_else(|| "notes".to_string());
+    run_engine_json(&["obsidian", "import", "--from", &from, "--into", &dom, "--vault", &vault, "--json"])
+}
+
 /// Probe one app's connectivity/auth (api/oauth/browser/mcp/cli/manual).
 /// Returns the structured ProbeResult: { ok, status, message, fixHint?, ... }.
 #[tauri::command]

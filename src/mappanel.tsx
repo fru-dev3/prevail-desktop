@@ -4,7 +4,8 @@
 // around, add the best-practice apps, and connect them.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X, Plug, ListPlus, ChevronDown, ChevronRight, Circle, MousePointerClick } from "lucide-react";
+import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X, Plug, ListPlus, ChevronDown, ChevronRight, Circle, MousePointerClick, FolderInput, FolderOpen } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "./bridge";
 import { loadMapModel } from "./maploader";
 import { acceptTool, acceptStack, suggestableCount, moveTool, removeToolFromDomain, fileGapTask, fileIdentityTask } from "./mapactions";
@@ -51,6 +52,7 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<ToolStatus | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
+  const [obOpen, setObOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -139,6 +141,13 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
               <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">agent-operable</div>
             </div>
             <button
+              onClick={() => setObOpen(true)}
+              title="Bring an existing Obsidian vault into Prevail"
+              className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
+            >
+              <FolderInput className="h-3.5 w-3.5" /> Import Obsidian
+            </button>
+            <button
               onClick={() => void load()}
               title="Re-probe connections on this machine"
               className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
@@ -223,6 +232,105 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
           <span className="inline-flex items-center gap-1 text-text-muted"><Circle className="h-2.5 w-2.5 fill-transparent" /> hardware excluded</span>
           <span className="ml-auto inline-flex items-center gap-1 text-text-muted"><MousePointerClick className="h-3.5 w-3.5" /> tap a tool to open it</span>
         </div>
+      </div>
+
+      {obOpen && (
+        <ObsidianImportModal
+          vaultPath={vaultPath}
+          domains={allDomains}
+          onClose={() => setObOpen(false)}
+          onDone={() => { setObOpen(false); void load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Bring an existing Obsidian vault into Prevail: pick the folder, choose the
+// destination domain, import. Notes become AI-readable source in that domain.
+function ObsidianImportModal({ vaultPath, domains, onClose, onDone }: {
+  vaultPath: string;
+  domains: { slug: string; label: string }[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [from, setFrom] = useState<string>("");
+  const [domain, setDomain] = useState<string>("notes");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [result, setResult] = useState<{ imported: number } | null>(null);
+
+  const pick = useCallback(async () => {
+    try {
+      const picked = await openDialog({ directory: true, multiple: false, title: "Choose your Obsidian vault folder" });
+      if (typeof picked === "string") setFrom(picked);
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+  }, []);
+
+  const run = useCallback(async () => {
+    if (!from) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await invoke<{ ok: boolean; imported?: number; error?: string }>("engine_obsidian_import", {
+        vault: vaultPath, from, domain: domain.trim() || "notes",
+      });
+      if (r && r.ok) setResult({ imported: r.imported ?? 0 });
+      else setErr(r?.error || "import failed");
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+  }, [from, domain, vaultPath]);
+
+  // Offer existing domains + a default "notes"; the import creates the domain if new.
+  const domainOptions = useMemo(() => {
+    const set = new Map<string, string>();
+    set.set("notes", "notes");
+    for (const d of domains) set.set(d.slug, d.label || d.slug);
+    return [...set.entries()];
+  }, [domains]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center gap-2">
+          <FolderInput className="h-5 w-5 text-accent" />
+          <h2 className="text-base font-semibold text-text-primary">Import an Obsidian vault</h2>
+        </div>
+
+        {result ? (
+          <div className="space-y-3">
+            <p className="text-sm text-text-secondary">
+              Imported <span className="font-semibold text-text-primary">{result.imported}</span> note{result.imported === 1 ? "" : "s"} into the <span className="font-mono">{domain}</span> domain. They are now AI-readable source, and Obsidian shows as a connected app. Re-run any time to sync changes.
+            </p>
+            <div className="flex justify-end">
+              <button onClick={onDone} className="rounded-md bg-accent px-3 py-1.5 text-sm text-background hover:opacity-90">Done</button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-[13px] leading-relaxed text-text-muted">
+              Point Prevail at your existing Obsidian vault folder. Its notes are copied in as markdown (wikilinks and embeds converted, tags and frontmatter kept) so your AI can read and ground on them.
+            </p>
+            <div>
+              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-text-muted">Obsidian vault folder</label>
+              <button onClick={() => void pick()} className="flex w-full items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-left text-sm text-text-secondary hover:border-accent-border">
+                <FolderOpen className="h-4 w-4 shrink-0 text-text-muted" />
+                <span className="truncate">{from || "Choose folder..."}</span>
+              </button>
+            </div>
+            <div>
+              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-text-muted">Import into domain</label>
+              <select value={domain} onChange={(e) => setDomain(e.target.value)} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary">
+                {domainOptions.map(([slug, label]) => <option key={slug} value={slug}>{label}</option>)}
+              </select>
+            </div>
+            {err && <div className="rounded-md border border-err/40 bg-err/10 px-3 py-1.5 text-[12px] text-err">{err}</div>}
+            <div className="flex justify-end gap-2">
+              <button onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary hover:text-accent">Cancel</button>
+              <button disabled={!from || busy} onClick={() => void run()} className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm text-background hover:opacity-90 disabled:opacity-50">
+                {busy ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Importing...</> : "Import"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
