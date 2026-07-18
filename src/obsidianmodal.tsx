@@ -3,9 +3,20 @@
 // Shared by the Map header and the Apps panel so both entry points open the
 // exact same, verified import flow (engine command: obsidian import).
 import { useCallback, useMemo, useState } from "react";
-import { FolderInput, FolderOpen, RefreshCw } from "lucide-react";
+import { FolderOpen, RefreshCw } from "lucide-react";
+import { siObsidian } from "simple-icons";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "./bridge";
+
+// The real Obsidian brand mark (simple-icons, #7C3AED). Shared by both entry
+// points and the modal header so the feature reads as Obsidian at a glance.
+export function ObsidianLogo({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="#7C3AED" aria-hidden="true">
+      <path d={(siObsidian as { path: string }).path} />
+    </svg>
+  );
+}
 
 export function ObsidianImportModal({ vaultPath, domains, onClose, onDone }: {
   vaultPath: string;
@@ -50,7 +61,7 @@ export function ObsidianImportModal({ vaultPath, domains, onClose, onDone }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center gap-2">
-          <FolderInput className="h-5 w-5 text-accent" />
+          <ObsidianLogo className="h-5 w-5" />
           <h2 className="text-base font-semibold text-text-primary">Import an Obsidian vault</h2>
         </div>
 

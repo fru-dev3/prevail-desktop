@@ -1176,7 +1176,7 @@ export function Sidebar({
           been computed at least once (broadcast + cached). */}
       <button
         onClick={() => setTab("map")}
-        title="Map: every domain's tool stack and how agent-operable it is"
+        title="Source: every app and tool feeding your domains, and how agent-operable each is"
         className={`flex items-center border-t border-border-subtle transition-colors hover:bg-surface-warm ${
           tab === "map" ? "bg-surface-warm" : ""
         } ${collapsed ? "justify-center px-2 py-2" : "gap-2.5 px-3 py-2"}`}
@@ -1186,7 +1186,7 @@ export function Sidebar({
         </span>
         {!collapsed && (
           <>
-            <span className="text-xs text-text-secondary">Map</span>
+            <span className="text-xs text-text-secondary">Source</span>
             {mapScore !== null && (
               <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{mapScore}%</span>
             )}

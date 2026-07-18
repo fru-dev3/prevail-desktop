@@ -1857,12 +1857,12 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => setTab("map")}
-                    title="Map: every domain's tool stack and how agent-operable it is"
+                    title="Source: every app and tool feeding your domains, and how agent-operable each is"
                     className={`flex items-center gap-1 rounded whitespace-nowrap px-1.5 py-0.5 text-[11px] transition-colors ${
                       tab === "map" ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
-                    <Waypoints className="h-3.5 w-3.5" /> Map
+                    <Waypoints className="h-3.5 w-3.5" /> Source
                   </button>
                 </>
               )}

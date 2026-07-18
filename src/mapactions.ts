@@ -72,10 +72,16 @@ export async function acceptStack(
 ): Promise<number> {
   const targets = tools.filter((t) => t.suggested && t.status !== "gap" && t.status !== "hardware");
   let n = 0;
+  let lastErr: unknown = null;
   onProgress?.(0, targets.length);
   for (const t of targets) {
-    try { await acceptTool(vaultPath, domainSlug, t); n++; } catch { /* continue; report count */ }
+    try { await acceptTool(vaultPath, domainSlug, t); n++; } catch (e) { lastErr = e; }
     onProgress?.(n, targets.length);
+  }
+  // Don't fail silently: if every add errored, surface the reason so the caller
+  // can show it instead of the button looking like it did nothing.
+  if (n === 0 && targets.length > 0 && lastErr) {
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
   }
   return n;
 }

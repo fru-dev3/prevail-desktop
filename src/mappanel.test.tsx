@@ -70,8 +70,8 @@ describe("MapPanel renders and acts", () => {
   it("Add recommended routes to engine_app_add (accept a best-practice stack)", async () => {
     render(<MapPanel vaultPath="/v" />);
     await waitFor(() => expect(screen.getByText("Dev")).toBeTruthy());
-    // The dev tile has suggestions (seed minus GitHub), so an "Add recommended" appears.
-    const addBtns = await screen.findAllByText(/Add recommended/);
+    // The dev tile has suggestions (seed minus GitHub), so an "Add all recommended" appears.
+    const addBtns = await screen.findAllByText(/Add all recommended/);
     fireEvent.click(addBtns[0]!);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("engine_app_add", expect.objectContaining({ vault: "/v" })));
   });
@@ -121,5 +121,38 @@ describe("MapPanel renders and acts", () => {
     await waitFor(() => expect(screen.getByText(/Showing only/)).toBeTruthy());
     expect(screen.getByText("Dev")).toBeTruthy();
     expect(screen.queryByText("Wealth")).toBeNull();
+  });
+
+  it("is titled Source (renamed from Map)", async () => {
+    render(<MapPanel vaultPath="/v" />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Source" })).toBeTruthy());
+  });
+
+  it("separates recommended tools under a Recommended heading", async () => {
+    render(<MapPanel vaultPath="/v" />);
+    // Dev has seed suggestions beyond GitHub, so the group label shows.
+    await waitFor(() => expect(screen.getAllByText("Recommended").length).toBeGreaterThan(0));
+  });
+
+  it("clicking a domain title opens that domain (prevail:open-domain)", async () => {
+    const opened: unknown[] = [];
+    const onDom = (e: Event) => opened.push((e as CustomEvent).detail);
+    window.addEventListener("prevail:open-domain", onDom);
+    render(<MapPanel vaultPath="/v" />);
+    await waitFor(() => expect(screen.getByText("Dev")).toBeTruthy());
+    fireEvent.click(screen.getByText("Dev"));
+    await waitFor(() => expect(opened).toContain("dev"));
+    window.removeEventListener("prevail:open-domain", onDom);
+  });
+
+  it("an Add app affordance routes to the connectors surface", async () => {
+    const opened: unknown[] = [];
+    const onSet = (e: Event) => opened.push((e as CustomEvent).detail);
+    window.addEventListener("prevail:open-settings", onSet);
+    render(<MapPanel vaultPath="/v" />);
+    const addApp = await screen.findAllByText("Add app");
+    fireEvent.click(addApp[0]!);
+    await waitFor(() => expect(opened).toContain("connectors"));
+    window.removeEventListener("prevail:open-settings", onSet);
   });
 });

@@ -4,9 +4,9 @@
 // around, add the best-practice apps, and connect them.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X, Plug, ListPlus, ChevronDown, ChevronRight, Circle, MousePointerClick, FolderInput } from "lucide-react";
+import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X, Plug, ListPlus, ChevronDown, ChevronRight, Circle, MousePointerClick, ArrowUpRight } from "lucide-react";
 import { invoke } from "./bridge";
-import { ObsidianImportModal } from "./obsidianmodal";
+import { ObsidianImportModal, ObsidianLogo } from "./obsidianmodal";
 import { loadMapModel } from "./maploader";
 import { acceptTool, acceptStack, suggestableCount, moveTool, removeToolFromDomain, fileGapTask, fileIdentityTask } from "./mapactions";
 import { resolveAppLogo } from "./panels3";
@@ -15,21 +15,35 @@ import { STATUS_LABEL, type MapModel, type MapDomain, type MapTool } from "./map
 import type { ToolStatus } from "./mapseed";
 import type { EngineApp, BrandLogo } from "./types";
 
-// Per-status chip styling on the app's semantic tokens. Slightly-rounded
-// rectangles (rounded-md), not pills.
-const CHIP: Record<ToolStatus, string> = {
-  connected: "bg-accent text-background border-transparent",
-  cli: "bg-ai text-white border-transparent",
-  mcp: "border-accent text-accent bg-transparent",
-  api: "bg-surface-warm text-text-secondary border-border-subtle",
-  research: "bg-accent-soft text-accent border-accent-border",
-  browser: "text-text-muted border-border-subtle bg-transparent",
-  hardware: "text-text-muted border-dashed border-border-subtle bg-transparent",
-  gap: "bg-warn/15 text-warn border-warn/40 font-semibold",
-  broken: "bg-err/15 text-err border-err/40",
+const LEGEND: ToolStatus[] = ["connected", "cli", "mcp", "api", "research", "browser", "gap", "broken", "hardware"];
+
+// Short, uniform labels for the filter row (the long STATUS_LABEL text made the
+// row read as a cluttered rainbow). One word each, paired with a small color dot.
+const STATUS_SHORT: Record<ToolStatus, string> = {
+  connected: "Connected",
+  cli: "CLI",
+  mcp: "MCP",
+  api: "API",
+  research: "Research",
+  browser: "Browser",
+  hardware: "Hardware",
+  gap: "Gap",
+  broken: "Attention",
 };
 
-const LEGEND: ToolStatus[] = ["connected", "cli", "mcp", "api", "research", "browser", "gap", "broken", "hardware"];
+// A single status color as a dot, so the filter chips stay neutral (professional)
+// and only the dot carries the color cue.
+const DOT: Record<ToolStatus, string> = {
+  connected: "bg-accent",
+  cli: "bg-ai",
+  mcp: "bg-accent/60",
+  api: "bg-text-muted/40",
+  research: "bg-accent/30",
+  browser: "bg-text-muted/25",
+  hardware: "bg-border",
+  gap: "bg-warn",
+  broken: "bg-err",
+};
 
 function meterTone(score: number): string {
   if (score >= 75) return "bg-accent";
@@ -132,8 +146,8 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
         <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-3">
           <div className="flex items-center gap-2.5">
             <Waypoints className="h-5 w-5 text-accent" />
-            <h1 className="text-lg font-semibold text-text-primary">Map</h1>
-            <span className="hidden text-xs text-text-muted sm:inline">every tool, in its domain, by how far an agent can act without you</span>
+            <h1 className="text-lg font-semibold text-text-primary">Source</h1>
+            <span className="hidden text-xs text-text-muted sm:inline">every app and tool feeding your domains, and how far an agent can act on each</span>
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right">
@@ -145,7 +159,7 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
               title="Bring an existing Obsidian vault into Prevail"
               className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
             >
-              <FolderInput className="h-3.5 w-3.5" /> Import Obsidian
+              <ObsidianLogo className="h-3.5 w-3.5" /> Import Obsidian
             </button>
             <button
               onClick={() => void load()}
@@ -170,33 +184,40 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-xs text-text-muted">Isolate a status:</span>
-          {LEGEND.map((st) => (
-            <button
-              key={st}
-              onClick={() => setFilter(filter === st ? null : st)}
-              className={`rounded-md border px-2.5 py-0.5 font-mono text-[11px] transition-all ${CHIP[st]} ${
-                filter === st ? "ring-2 ring-accent ring-offset-1 ring-offset-background" : filter ? "opacity-50" : ""
-              }`}
-            >
-              {STATUS_LABEL[st]}
-            </button>
-          ))}
+          <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-text-muted">Filter</span>
+          {LEGEND.map((st) => {
+            const active = filter === st;
+            return (
+              <button
+                key={st}
+                onClick={() => setFilter(active ? null : st)}
+                title={STATUS_LABEL[st]}
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] transition-all ${
+                  active
+                    ? "border-accent bg-accent-soft text-accent"
+                    : `border-border-subtle bg-surface text-text-secondary hover:border-border ${filter ? "opacity-45" : ""}`
+                }`}
+              >
+                <span className={`inline-block h-2 w-2 rounded-full ${DOT[st]}`} />
+                {STATUS_SHORT[st]}
+              </button>
+            );
+          })}
           {filter && (
-            <button onClick={() => setFilter(null)} className="ml-1 rounded-md px-2 py-0.5 text-[11px] text-text-muted underline hover:text-accent">
-              clear filter
+            <button onClick={() => setFilter(null)} className="ml-1 text-[11px] text-text-muted underline hover:text-accent">
+              clear
             </button>
           )}
         </div>
 
         {filter && (
           <div className="mt-2 text-[11px] text-text-muted">
-            Showing only <span className="text-text-secondary">{STATUS_LABEL[filter]}</span> tools across {visibleDomains.length} domain{visibleDomains.length === 1 ? "" : "s"}.
+            Showing only <span className="text-text-secondary">{STATUS_SHORT[filter]}</span> across {visibleDomains.length} domain{visibleDomains.length === 1 ? "" : "s"}.
           </div>
         )}
 
-        <div className="mt-3 text-[11px] text-text-muted">
-          Auth is machine-local. This reflects <span className="font-mono">{model.host}</span> as of {asOf}. Another machine may differ.
+        <div className="mt-2 text-[11px] text-text-muted/80">
+          Machine-local · <span className="font-mono">{model.host}</span> · {asOf}
         </div>
 
         <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] items-start gap-4">
@@ -219,6 +240,8 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
               onOpen={(t) => t.appId && openApp(t.appId)}
               onFileGap={(t) => void act(() => fileGapTask(vaultPath, d.slug, t.name))}
               onFileIdentity={(id) => void act(() => fileIdentityTask(vaultPath, d.slug, id))}
+              onAddApp={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+              onOpenDomain={() => window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: d.slug }))}
             />
           ))}
         </div>
@@ -284,19 +307,59 @@ interface TileProps {
   onOpen: (t: MapTool) => void;
   onFileGap: (t: MapTool) => void;
   onFileIdentity: (id: string) => void;
+  onAddApp: () => void;
+  onOpenDomain: () => void;
 }
+
+// Above this many tools a tile would tower over its neighbors; cap the visible
+// set so the grid rows stay even, with a "Show more" to reveal the rest.
+const TILE_CAP = 8;
 
 function DomainTile(p: TileProps) {
   const { domain, logos, filtering, collapsed, busy, progress } = p;
   const Icon = domainIcon(domain.slug) ?? Circle;
   const suggestable = suggestableCount(domain.tools);
+  const [showAll, setShowAll] = useState(false);
+
+  // Split the two things the user is comparing: what's IN the domain now vs what
+  // we RECOMMEND adding. Keeping them in separate labeled groups is what makes
+  // "Add recommended" self-explanatory.
+  const owned = domain.tools.filter((t) => !t.suggested);
+  const recommended = domain.tools.filter((t) => t.suggested);
+  const ownedOverCap = !filtering && owned.length > TILE_CAP;
+  const ownedShown = ownedOverCap && !showAll ? owned.slice(0, TILE_CAP) : owned;
+
+  const chipFor = (t: MapTool, i: number) => (
+    <Chip
+      key={`${t.name}-${i}`}
+      tool={t}
+      logos={logos}
+      busy={busy}
+      domainSlug={domain.slug}
+      allDomains={p.allDomains}
+      onAccept={() => p.onAccept(t)}
+      onRemove={() => p.onRemove(t)}
+      onMove={(to) => p.onMove(t, to)}
+      onConnect={() => p.onConnect(t)}
+      onOpen={() => p.onOpen(t)}
+      onFileGap={() => p.onFileGap(t)}
+    />
+  );
+
   return (
     <section className="flex flex-col gap-2.5 rounded-lg border border-border bg-surface p-4">
       <div className="flex items-center gap-2">
-        <button onClick={p.onToggle} disabled={filtering} className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default">
-          {filtering ? <span className="w-4" /> : collapsed ? <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" /> : <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />}
-          <Icon className="h-4 w-4 shrink-0 text-accent" />
-          <h2 className="truncate text-base font-semibold text-text-primary">{domain.label}</h2>
+        {filtering ? (
+          <span className="w-4" />
+        ) : (
+          <button onClick={p.onToggle} title={collapsed ? "Expand" : "Collapse"} className="shrink-0 text-text-muted transition-colors hover:text-accent">
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+        )}
+        <Icon className="h-4 w-4 shrink-0 text-accent" />
+        <button onClick={p.onOpenDomain} title={`Open the ${domain.label} domain`} className="group flex min-w-0 flex-1 items-center gap-1 text-left">
+          <h2 className="truncate text-base font-semibold text-text-primary transition-colors group-hover:text-accent group-hover:underline">{domain.label}</h2>
+          <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-text-muted opacity-0 transition-opacity group-hover:opacity-100" />
         </button>
         <span className="whitespace-nowrap font-mono text-xs tabular-nums text-text-muted">{domain.score}%</span>
       </div>
@@ -317,37 +380,55 @@ function DomainTile(p: TileProps) {
               <TriangleAlert className="h-3 w-3 shrink-0" /> needs identity: {id} - file a task
             </button>
           ))}
-          <div className="flex flex-wrap gap-1.5">
-            {domain.tools.map((t, i) => (
-              <Chip
-                key={`${t.name}-${i}`}
-                tool={t}
-                logos={logos}
-                busy={busy}
-                domainSlug={domain.slug}
-                allDomains={p.allDomains}
-                onAccept={() => p.onAccept(t)}
-                onRemove={() => p.onRemove(t)}
-                onMove={(to) => p.onMove(t, to)}
-                onConnect={() => p.onConnect(t)}
-                onOpen={() => p.onOpen(t)}
-                onFileGap={() => p.onFileGap(t)}
-              />
-            ))}
-          </div>
-          {suggestable > 0 && (
-            <button
-              disabled={busy}
-              onClick={p.onAcceptStack}
-              className="mt-1 flex w-fit items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-[11px] text-accent transition-colors hover:bg-accent hover:text-background disabled:opacity-60"
-            >
-              {progress ? (
-                <><RefreshCw className="h-3 w-3 animate-spin" /> Adding {progress.done}/{progress.total}...</>
-              ) : (
-                <><Plus className="h-3 w-3" /> Add recommended ({suggestable})</>
-              )}
+
+          {/* In this domain now. */}
+          {ownedShown.length > 0 && <div className="flex flex-wrap gap-1.5">{ownedShown.map(chipFor)}</div>}
+          {ownedOverCap && (
+            <button onClick={() => setShowAll((v) => !v)} className="flex w-fit items-center gap-1 text-[11px] text-text-muted transition-colors hover:text-accent">
+              {showAll ? <><ChevronDown className="h-3 w-3" /> Show less</> : <><ChevronRight className="h-3 w-3" /> Show {owned.length - TILE_CAP} more</>}
             </button>
           )}
+          {owned.length === 0 && recommended.length > 0 && !filtering && (
+            <p className="text-[11px] text-text-muted">Nothing connected here yet. Start with the recommended stack below.</p>
+          )}
+
+          {/* Recommended to add - clearly separated so "Add recommended" is obvious. */}
+          {recommended.length > 0 && (
+            <div className="space-y-1.5">
+              {!filtering && (
+                <div className="flex items-center gap-2 pt-0.5">
+                  <span className="font-mono text-[10px] uppercase tracking-wide text-text-muted">Recommended</span>
+                  <span className="h-px flex-1 bg-border-subtle" />
+                </div>
+              )}
+              <div className="flex flex-wrap gap-1.5">{recommended.map(chipFor)}</div>
+            </div>
+          )}
+
+          {/* Actions. */}
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {suggestable > 0 && (
+              <button
+                disabled={busy}
+                onClick={p.onAcceptStack}
+                title={`Add all ${suggestable} recommended: ${recommended.filter((t) => t.status !== "gap" && t.status !== "hardware").map((t) => t.name).join(", ")}`}
+                className="flex w-fit items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-[11px] text-accent transition-colors hover:bg-accent hover:text-background disabled:opacity-60"
+              >
+                {progress ? (
+                  <><RefreshCw className="h-3 w-3 animate-spin" /> Adding {progress.done}/{progress.total}...</>
+                ) : (
+                  <><Plus className="h-3 w-3" /> Add all recommended ({suggestable})</>
+                )}
+              </button>
+            )}
+            <button
+              onClick={p.onAddApp}
+              title="Connect another app to this domain"
+              className="flex w-fit items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
+            >
+              <Plus className="h-3 w-3" /> Add app
+            </button>
+          </div>
         </>
       )}
     </section>
@@ -373,7 +454,7 @@ interface ChipProps {
 
 function Chip({ tool, logos, busy, domainSlug, allDomains, onAccept, onRemove, onMove, onConnect, onOpen, onFileGap }: ChipProps) {
   const [menu, setMenu] = useState(false);
-  const title = [tool.note, tool.identity ? `identity: ${tool.identity}` : "", tool.suggested ? "suggested - not added yet" : "click to open its detail page"]
+  const title = [STATUS_LABEL[tool.status], tool.note, tool.identity ? `identity: ${tool.identity}` : "", tool.suggested ? "recommended - click to add" : "click to open its detail page"]
     .filter(Boolean)
     .join(" · ");
 
@@ -385,30 +466,38 @@ function Chip({ tool, logos, busy, domainSlug, allDomains, onAccept, onRemove, o
   const logo = resolveAppLogo({ title: tool.name, id: tool.appId }, logos);
   const canOpen = owned;
 
+  // One concise visual language: every chip is a neutral rounded rectangle.
+  // SHAPE carries membership - solid = in this domain, dashed = recommended.
+  // A single status DOT carries color, matching the filter legend. No per-status
+  // fills, so the row reads clean instead of as a rainbow.
   return (
     <span
-      className={`relative inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2 py-1 text-xs ${CHIP[tool.status]} ${
-        tool.suggested ? "opacity-60" : ""
-      } ${canOpen ? "cursor-pointer" : ""}`}
+      className={`relative inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-1 text-xs ${
+        tool.suggested
+          ? "border-dashed border-border-subtle bg-transparent text-text-muted"
+          : `border-border-subtle bg-surface text-text-secondary ${canOpen ? "cursor-pointer hover:border-border" : ""}`
+      }`}
       title={title || undefined}
     >
-      {/* Real brand logo where we have it, else a small status dot. */}
+      {/* Status dot (color = status, same key as the filter). */}
+      <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${DOT[tool.status]}`} />
+      {/* Real brand logo where we have it. */}
       {logo ? (
         <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-white">
           <svg width={11} height={11} viewBox="0 0 24 24" fill={`#${logo.hex}`} aria-hidden><path d={logo.path} /></svg>
         </span>
       ) : null}
       <button
-        onClick={canOpen ? onOpen : undefined}
-        disabled={!canOpen}
-        className={`bg-transparent p-0 ${canOpen ? "hover:underline" : "cursor-default"}`}
+        onClick={canOpen ? onOpen : addable ? onAccept : undefined}
+        disabled={busy && !!addable}
+        className={`bg-transparent p-0 ${canOpen || addable ? "hover:underline" : "cursor-default"}`}
       >
         {tool.name}
         {tool.identity && !tool.suggested ? <span className="ml-1 opacity-70">· {tool.identity}</span> : null}
       </button>
 
       {addable && (
-        <button disabled={busy} onClick={onAccept} title={`Add ${tool.name} to this domain`} className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-accent hover:text-background disabled:opacity-50">
+        <button disabled={busy} onClick={onAccept} title={`Add ${tool.name} to this domain`} className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-accent hover:bg-accent hover:text-background disabled:opacity-50">
           <Plus className="h-3 w-3" />
         </button>
       )}

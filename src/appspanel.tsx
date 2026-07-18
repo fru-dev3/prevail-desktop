@@ -16,7 +16,7 @@ import { appName, relTime, titleCase } from "./format";
 import { PREF, getPref, lsGet, lsSet } from "./storage";
 import { Toggle } from "./ui";
 import { ConnectAppFlow } from "./appconnect";
-import { ObsidianImportModal } from "./obsidianmodal";
+import { ObsidianImportModal, ObsidianLogo } from "./obsidianmodal";
 import { AppRowLogo } from "./panels3";
 import { GoogleWorkspacePanel } from "./googlepanel";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
@@ -925,7 +925,7 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               title="Bring your existing Obsidian vault in as AI-readable notes"
               className="mt-2 flex w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-left transition-colors hover:border-accent-border hover:bg-accent-soft/20"
             >
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-strong text-accent"><FolderOpen className="h-3.5 w-3.5" /></span>
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-strong"><ObsidianLogo className="h-3.5 w-3.5" /></span>
               <span className="text-xs font-medium text-text-secondary">Import from Obsidian</span>
             </button>
             {liveCount > 0 && (
@@ -3447,10 +3447,10 @@ export function AppDetail({ app, vaultPath, logos, status, busy, onSync, onSetEn
       <div className="min-w-0 flex-1 px-6 py-5">
         {/* WELCOME - a short overview of what connecting this app does. */}
         {tab === "welcome" && (
-          <div className="max-w-2xl space-y-4">
+          <div className="space-y-4">
             <div className={card}>
               <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Plug className="h-4 w-4 text-accent" /> What connecting {app.title || app.id} does</h3>
-              <p className="mt-2 text-[13px] leading-relaxed text-text-secondary">{welcomeText(app, notConnected)}</p>
+              <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-text-secondary">{welcomeText(app, notConnected)}</p>
               <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
                 {!gatewayProvider && !learnedLane && <CatalogField label="Connection">{methodLabel(app.integration)}</CatalogField>}
                 {gatewayProvider && <CatalogField label="Connection">{`Via ${titleCase(gatewayProvider)}`}</CatalogField>}
