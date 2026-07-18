@@ -1864,7 +1864,7 @@ export default function App() {
                       tab === "map" ? "bg-accent text-background shadow-sm" : "text-text-muted hover:bg-surface-warm hover:text-accent"
                     }`}
                   >
-                    <Waypoints className="h-3.5 w-3.5" /> Source
+                    <Waypoints className="h-3.5 w-3.5" /> Source Map
                   </button>
                 </>
               )}

@@ -132,9 +132,9 @@ describe("MapPanel renders and acts", () => {
     expect(screen.queryByText("Wealth")).toBeNull();
   });
 
-  it("is titled Source (renamed from Map)", async () => {
+  it("is titled Source Map (renamed from Map)", async () => {
     render(<MapPanel vaultPath="/v" />);
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Source" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Source Map" })).toBeTruthy());
   });
 
   it("separates recommended tools under a Recommended heading", async () => {

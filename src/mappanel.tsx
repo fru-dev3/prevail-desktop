@@ -4,14 +4,14 @@
 // around, add the best-practice apps, and connect them.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X, Plug, ListPlus, ChevronDown, ChevronRight, Circle, ArrowUpRight, Sparkles, Check } from "lucide-react";
+import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X, Plug, ListPlus, ChevronDown, ChevronRight, Circle, ArrowUpRight } from "lucide-react";
 import { invoke } from "./bridge";
 import { ObsidianImportModal, ObsidianLogo } from "./obsidianmodal";
 import { loadMapModel } from "./maploader";
 import { acceptTool, acceptStack, suggestableCount, moveTool, removeToolFromDomain, fileGapTask, fileIdentityTask } from "./mapactions";
-import { resolveAppLogo } from "./panels3";
+import { AppRowLogo } from "./panels3";
 import { domainIcon } from "./icons";
-import { STATUS_LABEL, computeNextActions, type MapModel, type MapDomain, type MapTool, type NextAction } from "./map";
+import { STATUS_LABEL, type MapModel, type MapDomain, type MapTool } from "./map";
 import type { ToolStatus } from "./mapseed";
 import type { EngineApp, BrandLogo } from "./types";
 
@@ -116,16 +116,6 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
     try { return new Date(model.asOf).toLocaleString(); } catch { return model.asOf; }
   }, [model]);
 
-  // The ranked "Do next" list - the highest-leverage moves across every domain.
-  const next = useMemo(() => (model ? computeNextActions(model.domains) : { actions: [], total: 0 }), [model]);
-
-  // Run one "Do next" action: add a recommendation, or open an owned tool's
-  // detail page so it can be (re)authenticated.
-  const runAction = useCallback((a: NextAction) => {
-    if (a.kind === "add") void act(() => acceptTool(vaultPath, a.domainSlug, a.tool));
-    else if (a.tool.appId) openApp(a.tool.appId);
-  }, [act, vaultPath, openApp]);
-
   // Cross-domain filter: when a status is isolated, show only domains that have
   // a matching tool, and only their matching chips.
   const visibleDomains = useMemo(() => {
@@ -158,7 +148,7 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
         <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-3">
           <div className="flex items-center gap-2.5">
             <Waypoints className="h-5 w-5 text-accent" />
-            <h1 className="text-lg font-semibold text-text-primary">Source</h1>
+            <h1 className="text-lg font-semibold text-text-primary">Source Map</h1>
             <span className="hidden text-xs text-text-muted sm:inline">every app and tool feeding your domains, and how far an agent can act on each</span>
           </div>
           <div className="flex items-center gap-3">
@@ -209,39 +199,7 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
           </div>
         </div>
 
-        {/* 2. Do next - the ranked, one-click moves that raise that number most. */}
-        {next.actions.length > 0 ? (
-          <div className="mt-4 rounded-lg border border-border bg-surface p-4">
-            <div className="mb-1 flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-accent" />
-              <h2 className="text-sm font-semibold text-text-primary">Do next</h2>
-              <span className="text-[11px] text-text-muted">biggest wins first{next.total > next.actions.length ? ` · ${next.total} in all` : ""}</span>
-            </div>
-            <div className="divide-y divide-border-subtle">
-              {next.actions.map((a, i) => (
-                <div key={`${a.domainSlug}-${a.tool.name}-${i}`} className="flex items-center gap-3 py-2">
-                  <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${a.kind === "add" ? "bg-accent-soft text-accent" : "bg-warn/15 text-warn"}`}>
-                    {a.kind === "add" ? <Plus className="h-3.5 w-3.5" /> : <Plug className="h-3.5 w-3.5" />}
-                  </span>
-                  <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: a.domainSlug }))} className="min-w-0 flex-1 text-left">
-                    <div className="truncate text-[13px] font-medium text-text-primary">{a.verb} {a.tool.name}</div>
-                    <div className="text-[11px] text-text-muted">in {a.domainLabel}</div>
-                  </button>
-                  <span className="shrink-0 font-mono text-[11px] tabular-nums text-ok" title="Estimated gain to your overall agent-operable score">+{a.deltaPct}%</span>
-                  <button disabled={busy} onClick={() => runAction(a)} className="shrink-0 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-[11px] font-medium text-accent transition-colors hover:bg-accent hover:text-background disabled:opacity-60">
-                    {a.verb}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-surface p-4 text-[13px] text-text-secondary">
-            <Check className="h-4 w-4 shrink-0 text-ok" /> You're all set - everything recommended is added and wired on this machine.
-          </div>
-        )}
-
-        {/* 3. Domains - even, expandable rows (one row per domain). */}
+        {/* Domains - even, expandable rows (one row per domain). */}
         <div className="mt-6 flex flex-wrap items-center gap-1.5">
           <h2 className="mr-2 text-sm font-semibold text-text-primary">Domains</h2>
           <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-text-muted">Filter</span>
@@ -522,13 +480,12 @@ function Chip({ tool, logos, busy, domainSlug, allDomains, onAccept, onRemove, o
   const connectable = owned && CONNECTABLE.has(tool.status);
   const isGap = tool.status === "gap";
   const moveTargets = allDomains.filter((d) => d.slug !== domainSlug);
-  const logo = resolveAppLogo({ title: tool.name, id: tool.appId }, logos);
   const canOpen = owned;
 
   // One concise visual language: every chip is a neutral rounded rectangle.
   // SHAPE carries membership - solid = in this domain, dashed = recommended.
-  // A single status DOT carries color, matching the filter legend. No per-status
-  // fills, so the row reads clean instead of as a rainbow.
+  // Each chip leads with the app's REAL icon (brand logo -> site favicon ->
+  // letter), with a small status dot on the corner (color keyed to the filter).
   return (
     <span
       className={`relative inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-1 text-xs ${
@@ -538,14 +495,11 @@ function Chip({ tool, logos, busy, domainSlug, allDomains, onAccept, onRemove, o
       }`}
       title={title || undefined}
     >
-      {/* Status dot (color = status, same key as the filter). */}
-      <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${DOT[tool.status]}`} />
-      {/* Real brand logo where we have it. */}
-      {logo ? (
-        <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-white">
-          <svg width={11} height={11} viewBox="0 0 24 24" fill={`#${logo.hex}`} aria-hidden><path d={logo.path} /></svg>
-        </span>
-      ) : null}
+      {/* App icon with a status-dot badge. */}
+      <span className="relative flex shrink-0">
+        <AppRowLogo app={{ title: tool.name, id: tool.appId }} logos={logos} size={16} fallback="letter" />
+        <span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-1 ring-surface ${DOT[tool.status]}`} />
+      </span>
       <button
         onClick={canOpen ? onOpen : addable ? onAccept : undefined}
         disabled={busy && !!addable}

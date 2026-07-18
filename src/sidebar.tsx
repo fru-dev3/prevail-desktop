@@ -1075,6 +1075,25 @@ export function Sidebar({
           </div>
         )}
 
+        {/* Source Map - a peer nav row sitting just above Apps (the two are
+            one-to-one: Source Map shows every app across domains; Apps lists them).
+            Opens the Source tab; shows the agent-operable score once computed. */}
+        <button
+          onClick={() => setTab("map")}
+          title="Source Map: every app and tool feeding your domains, and how agent-operable each is"
+          className={`mt-3 flex w-full items-center rounded-md transition-colors ${
+            collapsed ? "justify-center px-2 py-2" : "gap-1.5 px-2 py-1.5"
+          } ${tab === "map" ? "bg-accent text-background" : "text-text-muted hover:bg-surface-warm hover:text-text-secondary"}`}
+        >
+          <Waypoints className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left text-[10px] font-semibold uppercase tracking-[0.16em]">Source Map</span>
+              {mapScore !== null && <span className="font-mono text-[10px] tabular-nums opacity-70">{mapScore}%</span>}
+            </>
+          )}
+        </button>
+
         {/* Apps - peer to Domains. Always shown so it stays first-class even
             with nothing connected yet. Favorites expand by default; the full
             list stays collapsed so a long catalog never floods the rail. */}
@@ -1172,27 +1191,8 @@ export function Sidebar({
         </button>
       )}
 
-      {/* Agent-operable summary - opens the Map. Score appears once the Map has
-          been computed at least once (broadcast + cached). */}
-      <button
-        onClick={() => setTab("map")}
-        title="Source: every app and tool feeding your domains, and how agent-operable each is"
-        className={`flex items-center border-t border-border-subtle transition-colors hover:bg-surface-warm ${
-          tab === "map" ? "bg-surface-warm" : ""
-        } ${collapsed ? "justify-center px-2 py-2" : "gap-2.5 px-3 py-2"}`}
-      >
-        <span className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center">
-          <Waypoints className="h-4 w-4 text-accent" />
-        </span>
-        {!collapsed && (
-          <>
-            <span className="text-xs text-text-secondary">Source</span>
-            {mapScore !== null && (
-              <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{mapScore}%</span>
-            )}
-          </>
-        )}
-      </button>
+      {/* Source Map now lives up in the nav next to Apps (see above), not as a
+          standalone footer chip. */}
 
       {/* The live process / benchmark / backup / connectivity strips used to
           stack here and made the footer busy. They now live behind the single
