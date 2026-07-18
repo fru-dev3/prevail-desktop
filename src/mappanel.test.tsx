@@ -18,7 +18,7 @@ const apps: EngineApp[] = [
   },
   {
     id: "gdrive", title: "Google Drive", integration: "oauth", status: "connected", configured: true,
-    domains: ["wealth"], lastSuccessTs: 1700000000000, lastError: null, account: { label: "user@example.com" },
+    domains: ["wealth"], lastSuccessTs: 1700000000000, lastError: null, account: { label: "you@example.com" },
     refresh: null, autonomy: "read-only", connections: null, enabled: true, community: true, path: "/v/data/apps/gdrive",
   },
 ];
@@ -87,7 +87,7 @@ describe("MapPanel renders and acts", () => {
     await waitFor(() => expect(screen.getByText("Wealth")).toBeTruthy());
     expandAll();
     expect(screen.getByText("Google Drive")).toBeTruthy();
-    expect(screen.getByText(/fru\.dev3/)).toBeTruthy();
+    expect(screen.getByText(/you@example\.com/)).toBeTruthy();
   });
 
   it("never uses the word 'agency' anywhere in the UI", async () => {

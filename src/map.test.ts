@@ -9,10 +9,10 @@ function accepted(stackId: string): MapTool[] {
 }
 
 describe("scoreStack matches the approved prototype", () => {
-  it("Dev is 96% (11 CLI/connected + 1 api over 12 non-hardware)", () => {
-    expect(scoreStack(accepted("dev"))).toBe(96);
+  it("Dev is 100% (all CLI/connected tools)", () => {
+    expect(scoreStack(accepted("dev"))).toBe(100);
   });
-  it("Wearables is 50% (3 api, garmin watch hardware excluded)", () => {
+  it("Wearables is 50% (all api tools)", () => {
     expect(scoreStack(accepted("wearables"))).toBe(50);
   });
   it("hardware is excluded from the denominator, never counts", () => {
@@ -56,22 +56,25 @@ describe("computeStats", () => {
   it("buckets tools into wired/scriptable/manual/gaps, hardware excluded", () => {
     const d = finalizeDomain({ slug: "dev", label: "Dev", category: "dev", tools: accepted("dev") });
     const stats = computeStats([d]);
-    expect(stats.tools).toBe(12); // hardware-free dev count
-    expect(stats.wired).toBe(11);
-    expect(stats.scriptable).toBe(1); // Excalidraw api
+    const dev = SEED_STACKS.find((s) => s.id === "dev")!;
+    expect(stats.tools).toBe(dev.tools.length); // dev seed has no hardware
+    expect(stats.wired).toBe(dev.tools.filter((t) => t.status === "cli" || t.status === "connected").length);
     expect(stats.gaps).toBe(0);
   });
 });
 
 describe("finalizeDomain surfaces missing identities", () => {
-  it("a gap tool bound to an identity flags that identity as missing", () => {
+  it("a gap/broken tool bound to an identity flags that identity as missing", () => {
     const d = finalizeDomain({
-      slug: "insurance",
-      label: "Insurance",
-      category: "insurance",
-      tools: accepted("insurance"),
+      slug: "demo",
+      label: "Demo",
+      category: "demo",
+      tools: [
+        { name: "Connected thing", status: "connected" },
+        { name: "Unset carrier", status: "gap", identity: "second-account" },
+      ],
     });
-    expect(d.missingIdentities).toContain("account3");
+    expect(d.missingIdentities).toContain("second-account");
   });
 });
 

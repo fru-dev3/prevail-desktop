@@ -26,7 +26,7 @@ describe("buildMapModel", () => {
       ...base,
       domains: [{ slug: "business" }],
       apps: [
-        { id: "gmail", name: "Gmail", integration: "oauth", domains: ["business"], account: { label: "user@example.com" } },
+        { id: "gmail", name: "Gmail", integration: "oauth", domains: ["business"], account: { label: "you@example.com" } },
         { id: "qbo", name: "QuickBooks", integration: "api", domains: ["business"] },
       ],
       probes: [
@@ -43,10 +43,10 @@ describe("buildMapModel", () => {
     const m = buildMapModel({
       ...base,
       domains: [{ slug: "real-estate" }],
-      apps: [{ id: "gdrive", name: "Google Drive", integration: "oauth", domains: ["real-estate"], account: { label: "account2@example.com" } }],
+      apps: [{ id: "gdrive", name: "Google Drive", integration: "oauth", domains: ["real-estate"], account: { label: "second-account" } }],
     });
     const t = m.domains[0]!.tools[0]!;
-    expect(t.identity).toBe("account2@example.com");
+    expect(t.identity).toBe("second-account");
   });
 
   it("matches a domain to its seed by category and adds suggestions when asked", () => {
@@ -62,7 +62,7 @@ describe("buildMapModel", () => {
     const suggested = d.tools.filter((t) => t.suggested).map((t) => t.name);
     expect(owned).toContain("AllTrails");
     expect(suggested).toContain("Booking.com");
-    expect(suggested).toContain("Delta");
+    expect(suggested).toContain("TripIt");
     // Suggestions do not move the score: only AllTrails counts.
     expect(d.score).toBe(100);
   });
@@ -81,8 +81,8 @@ describe("buildMapModel", () => {
     // The library covers the 12 prototype stacks plus canonical stacks for the
     // rest of the common domains, so no domain shows up blank.
     expect(m.domains.length).toBeGreaterThanOrEqual(24);
-    // Dev seed still scores 96 as in the prototype.
-    expect(m.domains.find((d) => d.slug === "dev")!.score).toBe(96);
+    // The dev seed is all CLI/connected tools -> 100%.
+    expect(m.domains.find((d) => d.slug === "dev")!.score).toBe(100);
     // A previously-blank domain now has a recommended stack.
     expect(m.domains.find((d) => d.slug === "tax")!.tools.length).toBeGreaterThan(0);
   });

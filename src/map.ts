@@ -35,7 +35,7 @@ export interface MapDomain {
   // Agent-operable percentage, 0-100. See scoreStack.
   score: number;
   // Identities this domain's tools expect but which are not connected on this
-  // machine (e.g. a real-estate domain needs account2@example.com, not connected).
+  // machine (e.g. a real-estate domain needs second-account, not connected).
   missingIdentities: string[];
 }
 

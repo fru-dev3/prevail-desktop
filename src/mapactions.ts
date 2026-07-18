@@ -114,7 +114,7 @@ export async function fileGapTask(vaultPath: string, domainSlug: string, toolNam
 }
 
 // File a task to connect a missing multi-account identity a domain needs (e.g.
-// "connect account2@example.com so agents can reach real-estate mail").
+// "connect second-account so agents can reach real-estate mail").
 export async function fileIdentityTask(vaultPath: string, domainSlug: string, identity: string): Promise<void> {
   await invoke("tasks_add", {
     vault: vaultPath,
