@@ -44,11 +44,20 @@ export function titleCase(slug: string): string {
     .join(" ");
 }
 
+// A few brands whose common short title should display as the full brand name
+// (keyed by the alphanumeric-normalized title). Keep small and unambiguous.
+const BRAND_DISPLAY: Record<string, string> = {
+  amex: "American Express",
+};
+
 // App titles sometimes arrive with a connection suffix (e.g. "AllTrails via
 // InfoseekAI MCP"). The UI should always show just the app's name, so strip a
 // trailing " via …" segment. App names don't legitimately contain " via …".
+// Also expand a few well-known short brand names to their full form.
 export function appName(title: string): string {
-  return (title ?? "").replace(/\s+via\s+.+$/i, "").trim() || (title ?? "");
+  const t = (title ?? "").replace(/\s+via\s+.+$/i, "").trim() || (title ?? "");
+  const key = t.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return BRAND_DISPLAY[key] ?? t;
 }
 
 // Relative "time ago" from an epoch-ms timestamp (null = "never").

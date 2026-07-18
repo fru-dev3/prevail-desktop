@@ -32,6 +32,15 @@ function BrandTile({ name, logos }: { name: string; logos: Record<string, BrandL
 // its title or id (trying a few normalizations so e.g. "Booking.com" ->
 // "bookingcom" -> "booking" still resolves). Returns the matched BrandLogo or
 // null - shared by every app surface so logos render identically everywhere.
+// Common brand short-names whose app title/id differs from the logo slug, so the
+// real brand mark still resolves (e.g. an app called "Amex" -> American Express).
+const BRAND_ALIAS: Record<string, string> = {
+  amex: "americanexpress",
+  bofa: "bankofamerica",
+  gcp: "googlecloud",
+  aws: "amazonaws",
+};
+
 export function resolveAppLogo(app: { title?: string; id?: string }, logos: Record<string, BrandLogo>): BrandLogo | null {
   const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const strip = (s: string) => s.replace(/(connect|connector|app|inc|com|io|labs?)$/, "");
@@ -46,6 +55,8 @@ export function resolveAppLogo(app: { title?: string; id?: string }, logos: Reco
   ].filter((s) => s.length >= 2);
   for (const s of cands) {
     if (logos[s]) return logos[s];
+    const alias = BRAND_ALIAS[s];
+    if (alias && logos[alias]) return logos[alias];
   }
   return null;
 }
