@@ -1185,12 +1185,12 @@ export function Sidebar({
           <Waypoints className="h-4 w-4 text-accent" />
         </span>
         {!collapsed && (
-          <span className="flex min-w-0 flex-col items-start leading-tight">
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">Map</span>
-            <span className="text-xs text-text-secondary">
-              {mapScore !== null ? `${mapScore}% agent-operable` : "open the Map"}
-            </span>
-          </span>
+          <>
+            <span className="text-xs text-text-secondary">Map</span>
+            {mapScore !== null && (
+              <span className="ml-auto font-mono text-[10px] tabular-nums text-text-muted/70">{mapScore}%</span>
+            )}
+          </>
         )}
       </button>
 

@@ -16,6 +16,7 @@ import { appName, relTime, titleCase } from "./format";
 import { PREF, getPref, lsGet, lsSet } from "./storage";
 import { Toggle } from "./ui";
 import { ConnectAppFlow } from "./appconnect";
+import { ObsidianImportModal } from "./obsidianmodal";
 import { AppRowLogo } from "./panels3";
 import { GoogleWorkspacePanel } from "./googlepanel";
 import { favKeyOf, toggleFavorite, useFavorites } from "./appfavorites";
@@ -355,6 +356,20 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
         const ds = await invoke<{ name: string }[]>("scan_vault", { path: vaultPath });
         setVaultDomains((ds ?? []).map((d) => d.name.toLowerCase()).sort());
       } catch { /* domains optional - the picker just stays empty */ }
+    }
+  }, [vaultDomains.length, vaultPath]);
+
+  // "Import from Obsidian": bring an existing Obsidian vault in as AI-readable
+  // markdown source. Lives here (where every integration is added) so it is
+  // discoverable, plus in the Map header. Loads the domain list for the picker.
+  const [obImportOpen, setObImportOpen] = useState(false);
+  const openObsidian = useCallback(async () => {
+    setObImportOpen(true);
+    if (vaultDomains.length === 0) {
+      try {
+        const ds = await invoke<{ name: string }[]>("scan_vault", { path: vaultPath });
+        setVaultDomains((ds ?? []).map((d) => d.name.toLowerCase()).sort());
+      } catch { /* domains optional - the picker defaults to "notes" */ }
     }
   }, [vaultDomains.length, vaultPath]);
 
@@ -905,6 +920,14 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-background"><Plus className="h-3.5 w-3.5" /></span>
               <span className="text-xs font-semibold text-text-primary">Connect an app</span>
             </button>
+            <button
+              onClick={() => void openObsidian()}
+              title="Bring your existing Obsidian vault in as AI-readable notes"
+              className="mt-2 flex w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-left transition-colors hover:border-accent-border hover:bg-accent-soft/20"
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-strong text-accent"><FolderOpen className="h-3.5 w-3.5" /></span>
+              <span className="text-xs font-medium text-text-secondary">Import from Obsidian</span>
+            </button>
             {liveCount > 0 && (
               <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">{liveCount} of {directApps.length} live</div>
             )}
@@ -1136,6 +1159,15 @@ export function AppsPanel({ vaultPath }: { vaultPath: string }) {
             </div>
           </div>
         </div>
+      )}
+
+      {obImportOpen && (
+        <ObsidianImportModal
+          vaultPath={vaultPath}
+          domains={vaultDomains.map((d) => ({ slug: d, label: titleCase(d) }))}
+          onClose={() => setObImportOpen(false)}
+          onDone={() => { setObImportOpen(false); void reload(); window.dispatchEvent(new Event("prevail:apps-changed")); }}
+        />
       )}
     </>
   );
