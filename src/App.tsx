@@ -25,6 +25,7 @@ const RetrospectPanel = lazy(() => import("./retrospectpanel").then((m) => ({ de
 const ToolsPanel = lazy(() => import("./toolspanel").then((m) => ({ default: m.ToolsPanel })));
 const MapPanel = lazy(() => import("./mappanel").then((m) => ({ default: m.MapPanel })));
 import { Sidebar } from "./sidebar";
+import { ObsidianImportModal } from "./obsidianmodal";
 import { useAppearance, useFrameworkLens } from "./hooks";
 import { distillCfgFromPrefs, intentDaemonCfgFromPrefs, skillgenCfgFromPrefs, taskgenCfgFromPrefs } from "./daemoncfg";
 import { autoVerifyClis } from "./verify";
@@ -351,6 +352,9 @@ export default function App() {
   }, [vaultPath]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
+  // Obsidian import modal, opened from the sidebar's Obsidian icon (or Vault
+  // settings). Hosted at the app root so any surface can open it via an event.
+  const [obImportOpen, setObImportOpen] = useState(false);
   // App view - clicking an app in the sidebar opens it in the canvas: a detail
   // bar (schedule, cadence, last run, vault paths, domains) above a chat scoped
   // to the app's primary domain, so you converse against the app's own data
@@ -1205,6 +1209,9 @@ export default function App() {
     // visible. ChatPanel reads the pending seed on mount (survives this nav).
     const onComposeSeed = () => { setTab("chat"); setDomainTab("chat"); };
     window.addEventListener("prevail:compose-seed", onComposeSeed);
+    // Obsidian icon (sidebar footer) / Vault settings -> open the import config.
+    const onImportObsidian = () => setObImportOpen(true);
+    window.addEventListener("prevail:import-obsidian", onImportObsidian);
     // Count vault-affecting changes for the change-based backup trigger.
     const bump = () => bumpBackupChangeCount();
     window.addEventListener("prevail:context-changed", bump);
@@ -1216,6 +1223,7 @@ export default function App() {
       window.removeEventListener("prevail:domain-tab", onDomainTabEvt as EventListener);
       window.removeEventListener("prevail:new-chat", onNewChat);
       window.removeEventListener("prevail:compose-seed", onComposeSeed);
+      window.removeEventListener("prevail:import-obsidian", onImportObsidian);
       window.removeEventListener("prevail:context-changed", bump);
       window.removeEventListener("prevail:tasks-changed", bump);
     };
@@ -2043,6 +2051,14 @@ export default function App() {
           vaultPath={vaultPath}
           onClose={() => { setOnboardOpen(false); setOnboardDismissed(true); }}
           onApplied={() => void refreshDomains()}
+        />
+      )}
+      {obImportOpen && (
+        <ObsidianImportModal
+          vaultPath={vaultPath}
+          domains={domains.map((d) => ({ slug: d.name, label: titleCase(d.name) }))}
+          onClose={() => setObImportOpen(false)}
+          onDone={() => { setObImportOpen(false); window.dispatchEvent(new Event("prevail:apps-changed")); void refreshDomains(); }}
         />
       )}
       {quickCaptureOn && <QuickCapture vaultPath={vaultPath} />}

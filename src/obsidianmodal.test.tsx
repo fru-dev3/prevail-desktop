@@ -14,7 +14,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => "/Users/me
 
 import { ObsidianImportModal } from "./obsidianmodal";
 
-beforeEach(() => invokeMock.mockClear());
+beforeEach(() => { invokeMock.mockClear(); try { localStorage.clear(); } catch { /* ignore */ } });
 
 describe("ObsidianImportModal", () => {
   it("picks a folder, imports, and reports the count", async () => {

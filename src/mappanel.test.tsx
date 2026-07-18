@@ -109,19 +109,6 @@ describe("MapPanel renders and acts", () => {
     window.removeEventListener("prevail:open-app", onOpen);
   });
 
-  it("Import Obsidian opens the flow, picks a folder, and runs the import", async () => {
-    render(<MapPanel vaultPath="/v" />);
-    await waitFor(() => expect(screen.getByText("Dev")).toBeTruthy());
-    fireEvent.click(screen.getByText("Import Obsidian"));
-    await waitFor(() => expect(screen.getByText("Import an Obsidian vault")).toBeTruthy());
-    // Pick the folder (dialog mocked to return a path), then Import.
-    fireEvent.click(screen.getByText("Choose folder..."));
-    await waitFor(() => expect(screen.getByText("/Users/me/ObsidianVault")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Import" }));
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("engine_obsidian_import", expect.objectContaining({ from: "/Users/me/ObsidianVault", vault: "/v" })));
-    await waitFor(() => expect(screen.getByText(/Imported/)).toBeTruthy());
-  });
-
   it("isolating a status filters across domains (hides non-matching)", async () => {
     render(<MapPanel vaultPath="/v" />);
     await waitFor(() => expect(screen.getByText("Dev")).toBeTruthy());
@@ -156,16 +143,12 @@ describe("MapPanel renders and acts", () => {
     window.removeEventListener("prevail:open-domain", onDom);
   });
 
-  it("an Add app affordance routes to the connectors surface", async () => {
-    const opened: unknown[] = [];
-    const onSet = (e: Event) => opened.push((e as CustomEvent).detail);
-    window.addEventListener("prevail:open-settings", onSet);
+  it("Add app opens a domain-scoped picker modal", async () => {
     render(<MapPanel vaultPath="/v" />);
     await waitFor(() => expect(screen.getByText("Dev")).toBeTruthy());
     expandAll();
     const addApp = await screen.findAllByText("Add app");
     fireEvent.click(addApp[0]!);
-    await waitFor(() => expect(opened).toContain("connectors"));
-    window.removeEventListener("prevail:open-settings", onSet);
+    await waitFor(() => expect(screen.getByText(/Add an app to/)).toBeTruthy());
   });
 });

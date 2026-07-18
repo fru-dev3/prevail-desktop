@@ -3,7 +3,9 @@
 // start-on-boot, embedded Shortcuts).
 import { useEffect, useMemo, useState } from "react";
 import { disable as autostartDisable, enable as autostartEnable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
-import { Activity, Clock, Compass, Eye, EyeOff, FileClock, Globe, History, Lock, Monitor, Moon, Palette, PenLine, RefreshCw, ShieldAlert, ShieldCheck, SlidersHorizontal, Sun, Terminal } from "lucide-react";
+import { Activity, Clock, Compass, Eye, EyeOff, FileClock, FolderOpen, Globe, History, Lock, Monitor, Moon, Palette, PenLine, RefreshCw, ShieldAlert, ShieldCheck, SlidersHorizontal, Sun, Terminal } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { ObsidianLogo, getObsidianPath, setObsidianPath } from "./obsidianmodal";
 import type { LucideIcon } from "lucide-react";
 import { CollapsibleSection } from "./collapsible";
 import { ALLOWED_EVENTS, clearTelemetryLog, crashOn, setCrash, setUsage, telemetryConfigured, telemetryLog, usageOn } from "./telemetry";
@@ -389,6 +391,13 @@ export function IdealStateSection({ vaultPath, headerless = false }: { vaultPath
 // control is easy to find.
 
 export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof useAppearance> }) {
+  const [obPath, setObPath] = useState<string>(() => getObsidianPath());
+  const pickObsidian = async () => {
+    try {
+      const p = await openDialog({ directory: true, multiple: false, title: "Choose your Obsidian vault folder" });
+      if (typeof p === "string") { setObsidianPath(p); setObPath(p); }
+    } catch { /* cancelled */ }
+  };
   const [startOnBoot, setStartOnBoot] = useState(false);
   useEffect(() => { autostartIsEnabled().then(setStartOnBoot).catch(() => {}); }, []);
   const [closeToTray, setCloseToTray] = useState(() => getPref(PREF.closeToTray, "0") === "1");
@@ -463,6 +472,29 @@ export function GeneralSection({ appearance }: { appearance?: ReturnType<typeof 
         title="General"
         subtitle="App-wide behavior, appearance, and keyboard shortcuts."
       />
+      {/* Obsidian vault location - the folder Prevail imports your notes from.
+          One-way: notes come in as AI-readable source; Prevail never writes back. */}
+      <div className="mb-2 rounded-lg border border-border bg-surface p-4">
+        <div className="mb-1 flex items-center gap-2">
+          <ObsidianLogo className="h-4 w-4" />
+          <h3 className="text-sm font-semibold text-text-primary">Obsidian vault</h3>
+        </div>
+        <p className="mb-3 text-[12px] leading-relaxed text-text-muted">
+          Point Prevail at your Obsidian vault folder. Its notes are imported as AI-readable source (wikilinks and embeds converted, tags and frontmatter kept). One-way: Prevail never writes to your Obsidian files.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => void pickObsidian()} className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-left text-sm text-text-secondary transition-colors hover:border-accent-border">
+            <FolderOpen className="h-4 w-4 shrink-0 text-text-muted" />
+            <span className="max-w-[280px] truncate">{obPath || "Choose folder..."}</span>
+          </button>
+          <button disabled={!obPath} onClick={() => window.dispatchEvent(new Event("prevail:import-obsidian"))} className="rounded-md bg-accent px-3 py-1.5 text-sm text-background transition-opacity hover:opacity-90 disabled:opacity-50">
+            Import now
+          </button>
+          {obPath && (
+            <button onClick={() => { setObsidianPath(""); setObPath(""); }} className="text-[12px] text-text-muted underline hover:text-accent">clear</button>
+          )}
+        </div>
+      </div>
       <div className="space-y-2">
       <GenSub id="main" title="Main" icon={SlidersHorizontal} summary="behavior & defaults">
       <div className="rounded-lg border border-border bg-surface px-5">

@@ -8,8 +8,8 @@ import { siObsidian } from "simple-icons";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "./bridge";
 
-// The real Obsidian brand mark (simple-icons, #7C3AED). Shared by both entry
-// points and the modal header so the feature reads as Obsidian at a glance.
+// The real Obsidian brand mark (simple-icons, #7C3AED). Shared by every entry
+// point and the modal header so the feature reads as Obsidian at a glance.
 export function ObsidianLogo({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="#7C3AED" aria-hidden="true">
@@ -18,13 +18,24 @@ export function ObsidianLogo({ className = "h-4 w-4" }: { className?: string }) 
   );
 }
 
+// The remembered Obsidian vault location. Set in Vault settings (or the first
+// import) and reused everywhere so the user picks the folder once. UI-side
+// convenience for one-way import; the real read happens at import time.
+export const OBSIDIAN_PATH_KEY = "prevail.obsidian.path";
+export function getObsidianPath(): string {
+  try { return localStorage.getItem(OBSIDIAN_PATH_KEY) || ""; } catch { return ""; }
+}
+export function setObsidianPath(p: string) {
+  try { p ? localStorage.setItem(OBSIDIAN_PATH_KEY, p) : localStorage.removeItem(OBSIDIAN_PATH_KEY); } catch { /* ignore */ }
+}
+
 export function ObsidianImportModal({ vaultPath, domains, onClose, onDone }: {
   vaultPath: string;
   domains: { slug: string; label: string }[];
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [from, setFrom] = useState<string>("");
+  const [from, setFrom] = useState<string>(() => getObsidianPath());
   const [domain, setDomain] = useState<string>("notes");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -33,7 +44,7 @@ export function ObsidianImportModal({ vaultPath, domains, onClose, onDone }: {
   const pick = useCallback(async () => {
     try {
       const picked = await openDialog({ directory: true, multiple: false, title: "Choose your Obsidian vault folder" });
-      if (typeof picked === "string") setFrom(picked);
+      if (typeof picked === "string") { setFrom(picked); setObsidianPath(picked); }
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
   }, []);
 

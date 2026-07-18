@@ -21,6 +21,7 @@ import { BENCH_SCHED, useBenchBatches } from "./bench";
 import { BACKUP_CFG } from "./backup";
 import { BrandMark } from "./brandmark";
 import { AppRowLogo } from "./panels3";
+import { ObsidianLogo } from "./obsidianmodal";
 import type { BrandLogo, CatalogApp, ConnectorCatalog, Domain, EngineApp, LifeReadiness, Mode, TabId } from "./types";
 
 // Shared "selected row" treatment for every selectable nav row in the sidebar
@@ -1212,6 +1213,10 @@ export function Sidebar({
             className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${tab === "settings" ? "bg-accent-soft text-accent" : "text-text-muted hover:text-text-primary"}`}>
             <SettingsIcon className="h-4 w-4" />
           </button>
+          <button onClick={() => window.dispatchEvent(new Event("prevail:import-obsidian"))} title="Obsidian: import your Obsidian vault as AI-readable notes" aria-label="Obsidian"
+            className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:text-accent">
+            <ObsidianLogo className="h-4 w-4" />
+          </button>
           <button onClick={() => { const cycle: Mode[] = ["light", "dark", "system"]; const i = cycle.indexOf(appearance.mode); appearance.setMode(cycle[(i + 1) % cycle.length]); }}
             title={`Theme: ${appearance.mode}: click to cycle`} className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:text-text-secondary">
             {appearance.mode === "dark" ? <Moon className="h-4 w-4" /> : appearance.mode === "system" ? <Monitor className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
@@ -1264,6 +1269,15 @@ export function Sidebar({
           >
             <span className="text-[10px] leading-none">◆</span> Beta
           </a>
+          <button
+            onClick={() => window.dispatchEvent(new Event("prevail:import-obsidian"))}
+            title="Obsidian: import your Obsidian vault as AI-readable notes"
+            aria-label="Obsidian"
+            className="group/ob flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-text-muted transition-colors hover:bg-surface-warm hover:text-accent"
+          >
+            <ObsidianLogo className="h-3.5 w-3.5" />
+            <span className="max-w-0 overflow-hidden whitespace-nowrap text-[10px] font-medium opacity-0 transition-all group-hover/ob:max-w-[64px] group-hover/ob:opacity-100">Obsidian</span>
+          </button>
           <div className="flex-1" />
           <button
             onClick={() => { const cycle: Mode[] = ["light", "dark", "system"]; const i = cycle.indexOf(appearance.mode); appearance.setMode(cycle[(i + 1) % cycle.length]); }}

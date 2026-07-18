@@ -6,10 +6,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X, Plug, ListPlus, ChevronDown, ChevronRight, Circle, ArrowUpRight } from "lucide-react";
 import { invoke } from "./bridge";
-import { ObsidianImportModal, ObsidianLogo } from "./obsidianmodal";
 import { loadMapModel } from "./maploader";
 import { acceptTool, acceptStack, suggestableCount, moveTool, removeToolFromDomain, fileGapTask, fileIdentityTask } from "./mapactions";
 import { AppRowLogo } from "./panels3";
+import { AddAppModal } from "./addappmodal";
 import { domainIcon } from "./icons";
 import { STATUS_LABEL, type MapModel, type MapDomain, type MapTool } from "./map";
 import type { ToolStatus } from "./mapseed";
@@ -68,7 +68,7 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<ToolStatus | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(loadExpanded);
-  const [obOpen, setObOpen] = useState(false);
+  const [addAppDomain, setAddAppDomain] = useState<{ slug: string; label: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -156,13 +156,6 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
               <div className="font-mono text-lg font-semibold tabular-nums text-text-primary">{model.overallScore}%</div>
               <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">agent-operable</div>
             </div>
-            <button
-              onClick={() => setObOpen(true)}
-              title="Bring an existing Obsidian vault into Prevail"
-              className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-text-secondary transition-colors hover:border-accent-border hover:text-accent"
-            >
-              <ObsidianLogo className="h-3.5 w-3.5" /> Import Obsidian
-            </button>
             <button
               onClick={() => void load()}
               title="Re-probe connections on this machine"
@@ -254,7 +247,7 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
               onOpen={(t) => t.appId && openApp(t.appId)}
               onFileGap={(t) => void act(() => fileGapTask(vaultPath, d.slug, t.name))}
               onFileIdentity={(id) => void act(() => fileIdentityTask(vaultPath, d.slug, id))}
-              onAddApp={() => window.dispatchEvent(new CustomEvent("prevail:open-settings", { detail: "connectors" }))}
+              onAddApp={() => setAddAppDomain({ slug: d.slug, label: d.label })}
               onOpenDomain={() => window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: d.slug }))}
             />
           ))}
@@ -271,12 +264,13 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
         </div>
       </div>
 
-      {obOpen && (
-        <ObsidianImportModal
+      {addAppDomain && (
+        <AddAppModal
           vaultPath={vaultPath}
-          domains={allDomains}
-          onClose={() => setObOpen(false)}
-          onDone={() => { setObOpen(false); void load(); }}
+          domainSlug={addAppDomain.slug}
+          domainLabel={addAppDomain.label}
+          onClose={() => setAddAppDomain(null)}
+          onAdded={() => { setAddAppDomain(null); void load(); }}
         />
       )}
     </div>
