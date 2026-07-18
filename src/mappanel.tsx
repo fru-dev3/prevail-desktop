@@ -4,14 +4,14 @@
 // around, add the best-practice apps, and connect them.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X, Plug, ListPlus, ChevronDown, ChevronRight, Circle, MousePointerClick, ArrowUpRight } from "lucide-react";
+import { RefreshCw, Waypoints, TriangleAlert, Plus, MoreHorizontal, X, Plug, ListPlus, ChevronDown, ChevronRight, Circle, ArrowUpRight, Sparkles, Check } from "lucide-react";
 import { invoke } from "./bridge";
 import { ObsidianImportModal, ObsidianLogo } from "./obsidianmodal";
 import { loadMapModel } from "./maploader";
 import { acceptTool, acceptStack, suggestableCount, moveTool, removeToolFromDomain, fileGapTask, fileIdentityTask } from "./mapactions";
 import { resolveAppLogo } from "./panels3";
 import { domainIcon } from "./icons";
-import { STATUS_LABEL, type MapModel, type MapDomain, type MapTool } from "./map";
+import { STATUS_LABEL, computeNextActions, type MapModel, type MapDomain, type MapTool, type NextAction } from "./map";
 import type { ToolStatus } from "./mapseed";
 import type { EngineApp, BrandLogo } from "./types";
 
@@ -51,9 +51,11 @@ function meterTone(score: number): string {
   return "bg-warn";
 }
 
-const COLLAPSE_KEY = "prevail:map-collapsed";
-function loadCollapsed(): Set<string> {
-  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || "[]")); } catch { return new Set(); }
+// Which domain rows are expanded. Default: none - the row list is a clean, even
+// overview (coverage dots + score); you open a row for the full tool detail.
+const EXPAND_KEY = "prevail:map-expanded";
+function loadExpanded(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(EXPAND_KEY) || "[]")); } catch { return new Set(); }
 }
 
 export function MapPanel({ vaultPath }: { vaultPath: string }) {
@@ -65,7 +67,7 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
   const [progress, setProgress] = useState<{ slug: string; done: number; total: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<ToolStatus | null>(null);
-  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
+  const [expanded, setExpanded] = useState<Set<string>>(loadExpanded);
   const [obOpen, setObOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -99,11 +101,11 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
     if (app) window.dispatchEvent(new CustomEvent("prevail:open-app", { detail: app }));
   }, [appsById]);
 
-  const toggleCollapse = useCallback((slug: string) => {
-    setCollapsed((prev) => {
+  const toggleExpand = useCallback((slug: string) => {
+    setExpanded((prev) => {
       const next = new Set(prev);
       next.has(slug) ? next.delete(slug) : next.add(slug);
-      try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      try { localStorage.setItem(EXPAND_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
   }, []);
@@ -113,6 +115,16 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
     if (!model) return "";
     try { return new Date(model.asOf).toLocaleString(); } catch { return model.asOf; }
   }, [model]);
+
+  // The ranked "Do next" list - the highest-leverage moves across every domain.
+  const next = useMemo(() => (model ? computeNextActions(model.domains) : { actions: [], total: 0 }), [model]);
+
+  // Run one "Do next" action: add a recommendation, or open an owned tool's
+  // detail page so it can be (re)authenticated.
+  const runAction = useCallback((a: NextAction) => {
+    if (a.kind === "add") void act(() => acceptTool(vaultPath, a.domainSlug, a.tool));
+    else if (a.tool.appId) openApp(a.tool.appId);
+  }, [act, vaultPath, openApp]);
 
   // Cross-domain filter: when a status is isolated, show only domains that have
   // a matching tool, and only their matching chips.
@@ -175,15 +187,63 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
       <div className="mx-auto max-w-[1180px] px-5 py-5 pb-24">
         {err && <div className="mb-3 rounded-md border border-err/40 bg-err/10 px-3 py-1.5 text-[12px] text-err">{err}</div>}
 
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
-          <Stat n={s.tools} label="tools tracked" />
-          <Stat n={s.wired} label="agent-wired now" />
-          <Stat n={s.scriptable} label="scriptable next" />
-          <Stat n={s.manual} label="manual only" />
-          <Stat n={s.gaps} label="gaps" alarm={s.gaps > 0} />
+        {/* 1. Lead with the answer. */}
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div className="text-[13px] text-text-secondary">Your AI can act on</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-semibold tabular-nums text-text-primary">{model.overallScore}%</span>
+                <span className="text-[13px] text-text-muted">of your life, unassisted</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-[11px] text-text-muted">
+              <span><span className="font-mono text-text-secondary">{s.wired}</span> wired</span>
+              <span><span className="font-mono text-text-secondary">{s.scriptable}</span> scriptable</span>
+              <span className={s.gaps > 0 ? "text-warn" : ""}><span className="font-mono">{s.gaps}</span> gaps</span>
+              <span><span className="font-mono text-text-secondary">{s.tools}</span> tools</span>
+            </div>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-warm">
+            <span className={`block h-full rounded-full ${meterTone(model.overallScore)}`} style={{ width: `${model.overallScore}%` }} />
+          </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-1.5">
+        {/* 2. Do next - the ranked, one-click moves that raise that number most. */}
+        {next.actions.length > 0 ? (
+          <div className="mt-4 rounded-lg border border-border bg-surface p-4">
+            <div className="mb-1 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-accent" />
+              <h2 className="text-sm font-semibold text-text-primary">Do next</h2>
+              <span className="text-[11px] text-text-muted">biggest wins first{next.total > next.actions.length ? ` · ${next.total} in all` : ""}</span>
+            </div>
+            <div className="divide-y divide-border-subtle">
+              {next.actions.map((a, i) => (
+                <div key={`${a.domainSlug}-${a.tool.name}-${i}`} className="flex items-center gap-3 py-2">
+                  <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${a.kind === "add" ? "bg-accent-soft text-accent" : "bg-warn/15 text-warn"}`}>
+                    {a.kind === "add" ? <Plus className="h-3.5 w-3.5" /> : <Plug className="h-3.5 w-3.5" />}
+                  </span>
+                  <button onClick={() => window.dispatchEvent(new CustomEvent("prevail:open-domain", { detail: a.domainSlug }))} className="min-w-0 flex-1 text-left">
+                    <div className="truncate text-[13px] font-medium text-text-primary">{a.verb} {a.tool.name}</div>
+                    <div className="text-[11px] text-text-muted">in {a.domainLabel}</div>
+                  </button>
+                  <span className="shrink-0 font-mono text-[11px] tabular-nums text-ok" title="Estimated gain to your overall agent-operable score">+{a.deltaPct}%</span>
+                  <button disabled={busy} onClick={() => runAction(a)} className="shrink-0 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-[11px] font-medium text-accent transition-colors hover:bg-accent hover:text-background disabled:opacity-60">
+                    {a.verb}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-surface p-4 text-[13px] text-text-secondary">
+            <Check className="h-4 w-4 shrink-0 text-ok" /> You're all set - everything recommended is added and wired on this machine.
+          </div>
+        )}
+
+        {/* 3. Domains - even, expandable rows (one row per domain). */}
+        <div className="mt-6 flex flex-wrap items-center gap-1.5">
+          <h2 className="mr-2 text-sm font-semibold text-text-primary">Domains</h2>
           <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-text-muted">Filter</span>
           {LEGEND.map((st) => {
             const active = filter === st;
@@ -216,22 +276,18 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
           </div>
         )}
 
-        <div className="mt-2 text-[11px] text-text-muted/80">
-          Machine-local · <span className="font-mono">{model.host}</span> · {asOf}
-        </div>
-
-        <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] items-start gap-4">
+        <div className="mt-3 space-y-2">
           {visibleDomains.map((d) => (
-            <DomainTile
+            <DomainRow
               key={d.slug}
               domain={d}
               logos={logos}
               filtering={!!filter}
-              collapsed={collapsed.has(d.slug) && !filter}
+              expanded={expanded.has(d.slug) || !!filter}
               busy={busy}
               progress={progress && progress.slug === d.slug ? progress : null}
               allDomains={allDomains}
-              onToggle={() => toggleCollapse(d.slug)}
+              onToggle={() => toggleExpand(d.slug)}
               onAccept={(t) => void act(() => acceptTool(vaultPath, d.slug, t))}
               onAcceptStack={() => { setProgress({ slug: d.slug, done: 0, total: suggestableCount(d.tools) }); void act(() => acceptStack(vaultPath, d.slug, d.tools, (done, total) => setProgress({ slug: d.slug, done, total }))); }}
               onRemove={(t) => t.appId && void act(() => removeToolFromDomain(vaultPath, t.appId!, t.domains ?? [], d.slug))}
@@ -246,14 +302,14 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
           ))}
         </div>
 
-        <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[11px]">
+        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3 text-[11px]">
           <span className="font-mono uppercase tracking-[0.12em] text-text-muted">Weight</span>
           <WeightKey tone="bg-accent" weight="1" note="connected · CLI" />
           <WeightKey tone="bg-accent/60" weight="¾" note="MCP" />
           <WeightKey tone="bg-accent/30" weight="½" note="API · research" />
           <WeightKey tone="bg-surface-warm" weight="0" note="manual · browser · gap" />
           <span className="inline-flex items-center gap-1 text-text-muted"><Circle className="h-2.5 w-2.5 fill-transparent" /> hardware excluded</span>
-          <span className="ml-auto inline-flex items-center gap-1 text-text-muted"><MousePointerClick className="h-3.5 w-3.5" /> tap a tool to open it</span>
+          <span className="ml-auto text-text-muted/80">Machine-local · <span className="font-mono">{model.host}</span> · {asOf}</span>
         </div>
       </div>
 
@@ -265,15 +321,6 @@ export function MapPanel({ vaultPath }: { vaultPath: string }) {
           onDone={() => { setObOpen(false); void load(); }}
         />
       )}
-    </div>
-  );
-}
-
-function Stat({ n, label, alarm }: { n: number; label: string; alarm?: boolean }) {
-  return (
-    <div className="rounded-md border border-border bg-surface px-4 py-2.5">
-      <div className={`text-2xl font-semibold tabular-nums ${alarm ? "text-warn" : "text-text-primary"}`}>{n}</div>
-      <div className="font-mono text-[10px] uppercase tracking-[0.07em] text-text-muted">{label}</div>
     </div>
   );
 }
@@ -290,11 +337,11 @@ function WeightKey({ tone, weight, note }: { tone: string; weight: string; note:
   );
 }
 
-interface TileProps {
+interface RowProps {
   domain: MapDomain;
   logos: Record<string, BrandLogo>;
   filtering: boolean;
-  collapsed: boolean;
+  expanded: boolean;
   busy: boolean;
   progress: { done: number; total: number } | null;
   allDomains: { slug: string; label: string }[];
@@ -311,19 +358,18 @@ interface TileProps {
   onOpenDomain: () => void;
 }
 
-// Above this many tools a tile would tower over its neighbors; cap the visible
-// set so the grid rows stay even, with a "Show more" to reveal the rest.
-const TILE_CAP = 8;
+const DOT_CAP = 12; // coverage dots shown in the collapsed row before "+N"
+const TILE_CAP = 8; // owned chips shown in an expanded row before "Show more"
 
-function DomainTile(p: TileProps) {
-  const { domain, logos, filtering, collapsed, busy, progress } = p;
+// One domain = one even row. Collapsed, every row is the same height (icon,
+// name, coverage dots, score) so the list reads as a clean overview. Expand a
+// row for the full tool detail + recommendations + actions.
+function DomainRow(p: RowProps) {
+  const { domain, logos, filtering, expanded, busy, progress } = p;
   const Icon = domainIcon(domain.slug) ?? Circle;
   const suggestable = suggestableCount(domain.tools);
   const [showAll, setShowAll] = useState(false);
 
-  // Split the two things the user is comparing: what's IN the domain now vs what
-  // we RECOMMEND adding. Keeping them in separate labeled groups is what makes
-  // "Add recommended" self-explanatory.
   const owned = domain.tools.filter((t) => !t.suggested);
   const recommended = domain.tools.filter((t) => t.suggested);
   const ownedOverCap = !filtering && owned.length > TILE_CAP;
@@ -347,28 +393,44 @@ function DomainTile(p: TileProps) {
   );
 
   return (
-    <section className="flex flex-col gap-2.5 rounded-lg border border-border bg-surface p-4">
-      <div className="flex items-center gap-2">
-        {filtering ? (
-          <span className="w-4" />
-        ) : (
-          <button onClick={p.onToggle} title={collapsed ? "Expand" : "Collapse"} className="shrink-0 text-text-muted transition-colors hover:text-accent">
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
-        )}
+    <div className="overflow-hidden rounded-lg border border-border bg-surface">
+      {/* Uniform row header - same height for every domain. */}
+      <div className="flex items-center gap-2.5 px-4 py-2.5">
+        <button onClick={p.onToggle} disabled={filtering} title={expanded ? "Collapse" : "Expand"} className="shrink-0 text-text-muted transition-colors hover:text-accent disabled:opacity-40">
+          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
         <Icon className="h-4 w-4 shrink-0 text-accent" />
-        <button onClick={p.onOpenDomain} title={`Open the ${domain.label} domain`} className="group flex min-w-0 flex-1 items-center gap-1 text-left">
-          <h2 className="truncate text-base font-semibold text-text-primary transition-colors group-hover:text-accent group-hover:underline">{domain.label}</h2>
+        <button onClick={p.onOpenDomain} title={`Open the ${domain.label} domain`} className="group flex shrink-0 items-center gap-1 text-left">
+          <span className="truncate text-sm font-semibold text-text-primary transition-colors group-hover:text-accent group-hover:underline">{domain.label}</span>
           <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-text-muted opacity-0 transition-opacity group-hover:opacity-100" />
         </button>
-        <span className="whitespace-nowrap font-mono text-xs tabular-nums text-text-muted">{domain.score}%</span>
-      </div>
-      <div className="h-[5px] overflow-hidden rounded-full bg-surface-warm">
-        <span className={`block h-full rounded-full ${meterTone(domain.score)}`} style={{ width: `${domain.score}%` }} />
+
+        {/* Coverage at a glance: one dot per owned tool, colored by status. */}
+        <div className="ml-2 hidden min-w-0 flex-1 items-center gap-1 sm:flex">
+          {owned.length === 0 ? (
+            <span className="text-[11px] text-text-muted">no apps yet</span>
+          ) : (
+            <>
+              {owned.slice(0, DOT_CAP).map((t, i) => (
+                <span key={i} className={`h-2 w-2 shrink-0 rounded-full ${DOT[t.status]}`} title={`${t.name} · ${STATUS_LABEL[t.status]}`} />
+              ))}
+              {owned.length > DOT_CAP && <span className="text-[10px] text-text-muted">+{owned.length - DOT_CAP}</span>}
+            </>
+          )}
+        </div>
+
+        <div className="ml-auto flex shrink-0 items-center gap-3">
+          {suggestable > 0 && !expanded && <span className="hidden text-[11px] text-text-muted md:inline">{suggestable} recommended</span>}
+          <div className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-surface-warm sm:block">
+            <span className={`block h-full rounded-full ${meterTone(domain.score)}`} style={{ width: `${domain.score}%` }} />
+          </div>
+          <span className="w-9 text-right font-mono text-xs tabular-nums text-text-muted">{domain.score}%</span>
+        </div>
       </div>
 
-      {!collapsed && (
-        <>
+      {/* Expanded detail. */}
+      {expanded && (
+        <div className="space-y-2.5 border-t border-border-subtle px-4 py-3">
           {domain.missingIdentities.map((id) => (
             <button
               key={id}
@@ -381,7 +443,6 @@ function DomainTile(p: TileProps) {
             </button>
           ))}
 
-          {/* In this domain now. */}
           {ownedShown.length > 0 && <div className="flex flex-wrap gap-1.5">{ownedShown.map(chipFor)}</div>}
           {ownedOverCap && (
             <button onClick={() => setShowAll((v) => !v)} className="flex w-fit items-center gap-1 text-[11px] text-text-muted transition-colors hover:text-accent">
@@ -392,7 +453,6 @@ function DomainTile(p: TileProps) {
             <p className="text-[11px] text-text-muted">Nothing connected here yet. Start with the recommended stack below.</p>
           )}
 
-          {/* Recommended to add - clearly separated so "Add recommended" is obvious. */}
           {recommended.length > 0 && (
             <div className="space-y-1.5">
               {!filtering && (
@@ -405,8 +465,7 @@ function DomainTile(p: TileProps) {
             </div>
           )}
 
-          {/* Actions. */}
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
             {suggestable > 0 && (
               <button
                 disabled={busy}
@@ -429,9 +488,9 @@ function DomainTile(p: TileProps) {
               <Plus className="h-3 w-3" /> Add app
             </button>
           </div>
-        </>
+        </div>
       )}
-    </section>
+    </div>
   );
 }
 

@@ -105,6 +105,69 @@ export function overallScore(domains: MapDomain[]): number {
   return denom ? Math.round((100 * score) / denom) : 0;
 }
 
+// The single highest-leverage things to do next, ranked by their REAL effect on
+// the overall agent-operable score. Two kinds that actually move the number:
+//   - fix/connect: an owned tool that's present but not fully wired (broken, or
+//     api/mcp/research/browser) -> authenticating it promotes it to connected.
+//   - add: a recommended (suggested) tool -> brings new capability into a domain.
+// deltaPct is the honest change to the overall % if the action is taken. Only
+// actions with a positive delta are returned, so "Do next" never over-promises.
+export type NextKind = "fix" | "connect" | "add";
+export interface NextAction {
+  kind: NextKind;
+  verb: string; // Reconnect | Connect | Add
+  domainSlug: string;
+  domainLabel: string;
+  tool: MapTool;
+  deltaPct: number; // real overall-score gain if done
+}
+
+const NEXT_CONNECTABLE = new Set<ToolStatus>(["browser", "api", "mcp", "research", "broken"]);
+
+export function computeNextActions(domains: MapDomain[], limit = 6): { actions: NextAction[]; total: number } {
+  // Current global weighted sum + denominator (owned, non-hardware tools).
+  let S = 0;
+  let D = 0;
+  for (const d of domains) {
+    for (const t of d.tools) {
+      if (t.suggested || t.status === "hardware") continue;
+      D++;
+      S += STATUS_WEIGHT[t.status] ?? 0;
+    }
+  }
+  const base = D ? Math.round((100 * S) / D) : 0;
+
+  const acts: NextAction[] = [];
+  for (const d of domains) {
+    for (const t of d.tools) {
+      if (t.status === "hardware") continue;
+      if (!t.suggested && t.appId && NEXT_CONNECTABLE.has(t.status)) {
+        // Authenticate an owned-but-unwired tool -> connected (weight 1).
+        const gain = 1 - (STATUS_WEIGHT[t.status] ?? 0);
+        if (gain <= 0 || D === 0) continue;
+        const after = Math.round((100 * (S + gain)) / D);
+        const deltaPct = after - base;
+        if (deltaPct <= 0) continue;
+        acts.push({ kind: t.status === "broken" ? "fix" : "connect", verb: t.status === "broken" ? "Reconnect" : "Connect", domainSlug: d.slug, domainLabel: d.label, tool: t, deltaPct });
+      } else if (t.suggested && t.status !== "gap") {
+        // Add a recommended tool (grows the denominator).
+        const w = STATUS_WEIGHT[t.status] ?? 0;
+        const after = Math.round((100 * (S + w)) / (D + 1));
+        const deltaPct = after - base;
+        if (deltaPct <= 0) continue;
+        acts.push({ kind: "add", verb: "Add", domainSlug: d.slug, domainLabel: d.label, tool: t, deltaPct });
+      }
+    }
+  }
+  // Fixes/connects (you already own it - fastest win) before adds; then by impact.
+  acts.sort((a, b) => {
+    const rank = (x: NextAction) => (x.kind === "add" ? 1 : 0);
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
+    return b.deltaPct - a.deltaPct;
+  });
+  return { actions: acts.slice(0, limit), total: acts.length };
+}
+
 // Finalize a domain: compute score + missing identities from its tools.
 export function finalizeDomain(d: Omit<MapDomain, "score" | "missingIdentities">): MapDomain {
   const need = new Set<string>();

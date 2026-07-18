@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scoreStack, computeStats, finalizeDomain, type MapTool } from "./map";
+import { scoreStack, computeStats, finalizeDomain, computeNextActions, type MapTool, type MapDomain } from "./map";
 import { SEED_STACKS, seedForCategory, STATUS_WEIGHT } from "./mapseed";
 
 // Turn a seed stack's tools into accepted (non-suggested) MapTools.
@@ -81,5 +81,53 @@ describe("seedForCategory maps categories and slugs", () => {
     expect(seedForCategory("money")?.id).toBe("wealth");
     expect(seedForCategory("dev")?.id).toBe("dev");
     expect(seedForCategory("nonsense")).toBeUndefined();
+  });
+});
+
+describe("computeNextActions ranks the highest-leverage moves honestly", () => {
+  const dom = (slug: string, tools: MapTool[]): MapDomain =>
+    finalizeDomain({ slug, label: slug, category: slug, tools });
+
+  it("surfaces a broken owned tool as a positive-impact fix", () => {
+    const domains = [dom("d", [
+      { name: "A", status: "connected", appId: "a" },
+      { name: "B", status: "broken", appId: "b" },
+    ])];
+    const { actions } = computeNextActions(domains);
+    expect(actions.length).toBeGreaterThan(0);
+    expect(actions[0]!.kind).toBe("fix");
+    expect(actions[0]!.verb).toBe("Reconnect");
+    expect(actions[0]!.deltaPct).toBe(50); // 50% -> 100%
+  });
+
+  it("ranks owned connects before adds, both with real gains", () => {
+    const domains = [dom("d", [
+      { name: "Api", status: "api", appId: "api" },
+      { name: "Rec", status: "connected", suggested: true },
+    ])];
+    const { actions } = computeNextActions(domains);
+    expect(actions[0]!.kind).toBe("connect"); // api -> connected, +50
+    expect(actions[0]!.deltaPct).toBe(50);
+    const add = actions.find((a) => a.kind === "add");
+    expect(add?.deltaPct).toBe(25); // adding a connected tool: 50% -> 75%
+  });
+
+  it("returns nothing to do when everything is already wired", () => {
+    const domains = [dom("d", [
+      { name: "A", status: "connected", appId: "a" },
+      { name: "B", status: "cli", appId: "b" },
+    ])];
+    const { actions, total } = computeNextActions(domains);
+    expect(total).toBe(0);
+    expect(actions).toEqual([]);
+  });
+
+  it("never over-promises: only positive-delta actions are returned", () => {
+    const domains = [dom("d", [
+      { name: "A", status: "connected", appId: "a" },
+      { name: "Rec", status: "connected", suggested: true }, // adding nets 0% -> excluded
+    ])];
+    const { actions } = computeNextActions(domains);
+    expect(actions.every((a) => a.deltaPct > 0)).toBe(true);
   });
 });

@@ -47,13 +47,18 @@ import { MapPanel } from "./mappanel";
 
 beforeEach(() => { invokeMock.mockClear(); localStorage.clear(); });
 
+// Domain rows are collapsed by default (clean overview); tool chips live in the
+// expanded detail. Expand every row so chip-level assertions can see them.
+const expandAll = () => screen.getAllByTitle("Expand").forEach((b) => fireEvent.click(b));
+
 describe("MapPanel renders and acts", () => {
   it("mounts with data: domain tiles, a chip, the agent-operable %, and the machine stamp", async () => {
     render(<MapPanel vaultPath="/v" />);
     await waitFor(() => expect(screen.getByText("Dev")).toBeTruthy());
-    // Both domains render as tiles.
+    // Both domains render as rows.
     expect(screen.getByText("Wealth")).toBeTruthy();
-    // Owned tools show as chips.
+    // Owned tools show as chips once the row is expanded.
+    expandAll();
     expect(screen.getByText("GitHub")).toBeTruthy();
     // The machine-local stamp names the host.
     expect(screen.getByText(/test-host/)).toBeTruthy();
@@ -70,7 +75,8 @@ describe("MapPanel renders and acts", () => {
   it("Add recommended routes to engine_app_add (accept a best-practice stack)", async () => {
     render(<MapPanel vaultPath="/v" />);
     await waitFor(() => expect(screen.getByText("Dev")).toBeTruthy());
-    // The dev tile has suggestions (seed minus GitHub), so an "Add all recommended" appears.
+    expandAll();
+    // The dev row has suggestions (seed minus GitHub), so an "Add all recommended" appears.
     const addBtns = await screen.findAllByText(/Add all recommended/);
     fireEvent.click(addBtns[0]!);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("engine_app_add", expect.objectContaining({ vault: "/v" })));
@@ -78,7 +84,9 @@ describe("MapPanel renders and acts", () => {
 
   it("Google identity is shown on the chip", async () => {
     render(<MapPanel vaultPath="/v" />);
-    await waitFor(() => expect(screen.getByText("Google Drive")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Wealth")).toBeTruthy());
+    expandAll();
+    expect(screen.getByText("Google Drive")).toBeTruthy();
     expect(screen.getByText(/fru\.dev3/)).toBeTruthy();
   });
 
@@ -93,7 +101,8 @@ describe("MapPanel renders and acts", () => {
     const onOpen = (e: Event) => opened.push((e as CustomEvent).detail);
     window.addEventListener("prevail:open-app", onOpen);
     render(<MapPanel vaultPath="/v" />);
-    await waitFor(() => expect(screen.getByText("GitHub")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Dev")).toBeTruthy());
+    expandAll();
     fireEvent.click(screen.getByText("GitHub"));
     await waitFor(() => expect(opened.length).toBeGreaterThan(0));
     expect((opened[0] as EngineApp).id).toBe("github");
@@ -115,7 +124,7 @@ describe("MapPanel renders and acts", () => {
 
   it("isolating a status filters across domains (hides non-matching)", async () => {
     render(<MapPanel vaultPath="/v" />);
-    await waitFor(() => expect(screen.getByText("GitHub")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Dev")).toBeTruthy());
     // Dev has CLI tools (github + seed); the wealth stack has none. Isolate CLI.
     fireEvent.click(screen.getByRole("button", { name: "CLI" }));
     await waitFor(() => expect(screen.getByText(/Showing only/)).toBeTruthy());
@@ -130,7 +139,9 @@ describe("MapPanel renders and acts", () => {
 
   it("separates recommended tools under a Recommended heading", async () => {
     render(<MapPanel vaultPath="/v" />);
-    // Dev has seed suggestions beyond GitHub, so the group label shows.
+    await waitFor(() => expect(screen.getByText("Dev")).toBeTruthy());
+    expandAll();
+    // Dev has seed suggestions beyond GitHub, so the group label shows once expanded.
     await waitFor(() => expect(screen.getAllByText("Recommended").length).toBeGreaterThan(0));
   });
 
@@ -150,6 +161,8 @@ describe("MapPanel renders and acts", () => {
     const onSet = (e: Event) => opened.push((e as CustomEvent).detail);
     window.addEventListener("prevail:open-settings", onSet);
     render(<MapPanel vaultPath="/v" />);
+    await waitFor(() => expect(screen.getByText("Dev")).toBeTruthy());
+    expandAll();
     const addApp = await screen.findAllByText("Add app");
     fireEvent.click(addApp[0]!);
     await waitFor(() => expect(opened).toContain("connectors"));
